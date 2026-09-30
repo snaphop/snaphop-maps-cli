@@ -5,8 +5,14 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.2.0 — 2026-09-30
+
 ### Added
 
+- **Parity with SnapHop Maps' 13 MCP tools** (its ADR 0026). New commands `get-account`, `get-installation`,
+  `list-releases`, `rollback-map` (`--release N`, optionally `--expected-active N`) and `list-activity` call the
+  server's new tools. The skill shows how to roll a map back, and `testdata/tools.json` is the server's tool list
+  at snaphop-maps `05b98bb`.
 - **An Agent Skill for AI assistants** (ADR 0003). `skills/snaphop-maps/SKILL.md` teaches Claude, ChatGPT and
   Codex, Gemini, Grok, Cursor and every other client that reads Agent Skills when and how to use the CLI. The
   binary embeds it: `snaphop-maps skill` prints it, `skill install --client claude|codex|gemini|grok|cursor|agents`
@@ -17,11 +23,6 @@ section with a `### Security` subsection is a security release, and its notes sa
   this file agree, runs every check, builds each platform in its own concurrent job, attests each binary's build
   provenance, and publishes a GitHub release with the binaries, `SHA256SUMS` and this file's section as its notes.
   Running the workflow by hand with a tag rehearses that release from `main` and publishes nothing.
-
-- **Parity with SnapHop Maps' 13 MCP tools** (its ADR 0026). New commands `get-account`, `get-installation`,
-  `list-releases`, `rollback-map` (`--release N`, optionally `--expected-active N`) and `list-activity` call the
-  server's new tools. The skill shows how to roll a map back, and `testdata/tools.json` is the server's tool list
-  at snaphop-maps `05b98bb`.
 
 ### Fixed
 

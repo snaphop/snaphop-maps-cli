@@ -96,7 +96,7 @@ the skill always matches the version you run:
 | Grok Build                    | `snaphop-maps skill install --client grok`                | `~/.grok/skills/snaphop-maps`   |
 | Cursor                        | `snaphop-maps skill install --client cursor`              | `~/.cursor/skills/snaphop-maps` |
 | Any client reading `.agents/skills` | `snaphop-maps skill install --client agents`        | `~/.agents/skills/snaphop-maps` |
-| claude.ai, ChatGPT, model APIs | Upload the zip from `snaphop-maps skill pack` (attached to each release from the next one on) | — |
+| claude.ai, ChatGPT, model APIs | Upload the zip from `snaphop-maps skill pack` (attached to each release from v0.2.0) | — |
 
 Add `--project DIR` to install the skill into one project instead of your home directory. `snaphop-maps skill`
 prints it, which an assistant can read to learn the CLI in one step. A skill needs a client that can run the binary.
