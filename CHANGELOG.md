@@ -18,6 +18,11 @@ section with a `### Security` subsection is a security release, and its notes sa
   provenance, and publishes a GitHub release with the binaries, `SHA256SUMS` and this file's section as its notes.
   Running the workflow by hand with a tag rehearses that release from `main` and publishes nothing.
 
+- **Parity with SnapHop Maps' 13 MCP tools** (its ADR 0026). New commands `get-account`, `get-installation`,
+  `list-releases`, `rollback-map` (`--release N`, optionally `--expected-active N`) and `list-activity` call the
+  server's new tools. The skill shows how to roll a map back, and `testdata/tools.json` is the server's tool list
+  at snaphop-maps `05b98bb`.
+
 ### Fixed
 
 - `--view`'s help gave the opening zoom as 0 to 20. The service takes 0 to 22, and 20 is only the default

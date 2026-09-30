@@ -48,7 +48,7 @@ snaphop-maps create-map --name "Coffee in Lisbon" --style positron \
 - `name` and each marker `title` are 1 to 120 characters. A `description` is at most 1000 characters and may contain
   line breaks. `color` is `#rrggbb`. All of it is plain text: never HTML or Markdown.
 - A map holds at most 500 markers. `style` is one of `liberty` (the default), `bright`, `positron`, `dark` or
-  `fiord`.
+  `fiord`. `snaphop-maps get-installation` lists the styles this installation offers.
 - Leave `--view` out and the map opens on all of its markers. Give one only when the user wants a particular
   opening view: `--view '{"center": [-9.14, 38.71], "zoom": 13}'`. `--controls '{"cooperativeGestures": true}'`
   makes a page scroll past an embedded map until the reader uses two fingers or a modifier key.
@@ -76,6 +76,22 @@ snaphop-maps withdraw-map MAP_ID --yes
 - `withdraw-map` takes the map down for good: the link and every embed stop working, and it cannot be undone. Ask
   the user first, and pass `--yes` only once they have agreed.
 
+## Roll back to an earlier release
+
+Each publication makes a new numbered release. If a change went wrong, make an earlier release live again:
+
+```sh
+snaphop-maps list-releases MAP_ID
+snaphop-maps rollback-map MAP_ID --release 1
+```
+
+- `list-releases` lists every release, newest first, with its `number`, state and when it was published and last
+  made live.
+- `rollback-map` makes that release live. The page link and every embed show it within about a minute. The draft
+  is left as it is, so the next `publish-map` publishes the draft, not the rolled-back release.
+- The rollback is refused with `ACTIVE_RELEASE_CHANGED` if another release went live since you looked.
+  `--expected-active N` names the release you expect to be live, and defaults to the one live now.
+
 ## Keep the account alive
 
 - The account is deleted, with every map on it, after `limits.inactivityDays` days without a request (the
@@ -102,6 +118,7 @@ Refusals you will meet:
 - `MAP_INVALID`: `error.fields` names each refused field by its path, such as `markers[3].position`. Swapped
   coordinates are the usual cause.
 - `MAP_NOT_FOUND`: the id is wrong or the map was withdrawn. Run `list-maps`.
+- `RELEASE_UNAVAILABLE`: that release cannot be made live. Run `list-releases`. A map never published has none.
 - `DRAFT_CHANGED`: run `get-map` again and redo the change.
 - `TOO_MANY_REQUESTS`: wait and try again later.
 - `MAP_LIMIT_REACHED`: the workspace is full. Offer to withdraw a map the user no longer needs.
@@ -113,6 +130,9 @@ Otherwise the user may end up with two maps.
 
 ## More
 
+- `snaphop-maps get-account` shows the account the key belongs to: its workspace, role and what the role permits.
+  `snaphop-maps list-activity` lists the workspace's 50 most recent events, such as publications, rollbacks and
+  withdrawals, and who did them.
 - `snaphop-maps help COMMAND` explains one command, and `snaphop-maps schema` describes every command as JSON.
 - `snaphop-maps guide` returns the service's own instructions and limits.
 - `snaphop-maps tools` lists the service's tools, and `snaphop-maps call TOOL --args JSON` calls any of them.

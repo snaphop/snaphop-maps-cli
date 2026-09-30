@@ -30,7 +30,7 @@ func overview() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n%s\n\nCommands:\n", about, start)
 	for _, cmd := range commands() {
-		fmt.Fprintf(&b, "  %-15s %s\n", cmd.Name, cmd.Summary)
+		fmt.Fprintf(&b, "  %-17s %s\n", cmd.Name, cmd.Summary)
 	}
 	b.WriteString("\nGlobal flags, taken before or after the command:\n")
 	writeFlags(&b, globalFlags)

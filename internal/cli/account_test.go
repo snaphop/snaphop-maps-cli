@@ -240,8 +240,13 @@ func TestSchemaDescribesEveryCommand(t *testing.T) {
 	if len(listed) != len(commands()) {
 		t.Fatalf("schema lists %d commands, want %d", len(listed), len(commands()))
 	}
-	create := listed[1].(map[string]any)
-	if create["name"] != "create-map" || create["tool"] != "create_map" || create["needsApiKey"] != true {
+	var create map[string]any
+	for _, entry := range listed {
+		if entry.(map[string]any)["name"] == "create-map" {
+			create = entry.(map[string]any)
+		}
+	}
+	if create["tool"] != "create_map" || create["needsApiKey"] != true {
 		t.Fatalf("create-map = %v", create)
 	}
 	if len(out["exitStatuses"].([]any)) != 7 || len(out["environment"].([]any)) != 3 || len(out["globalFlags"].([]any)) != 5 {

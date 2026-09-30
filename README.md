@@ -10,12 +10,17 @@ CLI offers exactly what the MCP server offers:
 | Command          | MCP tool         | What it does                                                        |
 | ---------------- | ---------------- | ------------------------------------------------------------------- |
 | `register-agent` | `register_agent` | Open an account; keeps its API key in the credentials file          |
+| `get-account`    | `get_account`    | The account the key belongs to: workspace, role, permissions       |
+| `get-installation` | `get_installation` | Styles, basemap and delivery that apply to every map here       |
 | `create-map`     | `create_map`     | Create a map and, unless `--publish=false`, publish it              |
 | `list-maps`      | `list_maps`      | List the workspace's maps                                           |
 | `get-map`        | `get_map`        | Read a map: its whole draft, version, page link and embed codes     |
 | `update-map`     | `update_map`     | Replace the fields given, keep the rest, and publish                |
 | `publish-map`    | `publish_map`    | Publish the current draft as the next release                       |
+| `list-releases`  | `list_releases`  | List a map's releases, newest first                                 |
+| `rollback-map`   | `rollback_map`   | Make an earlier release live again; the draft is left as it is      |
 | `withdraw-map`   | `withdraw_map`   | Take a map down for good (needs `--yes`)                            |
+| `list-activity`  | `list_activity`  | The workspace's 50 most recent events                               |
 | `replace-key`    | `replace_key`    | Replace the API key before it expires; keeps the new one            |
 | `call`           | any              | Call any tool by name with `--args` JSON                            |
 | `tools`          | `tools/list`     | The service's tools and the JSON Schema of their arguments, live    |
@@ -56,6 +61,8 @@ snaphop-maps create-map --name "Coffee in Lisbon" --style positron \
 snaphop-maps list-maps
 snaphop-maps get-map MAP_ID
 snaphop-maps update-map MAP_ID --name "Coffee in Lisbon, 2026"   # publishes unless --publish=false
+snaphop-maps list-releases MAP_ID
+snaphop-maps rollback-map MAP_ID --release 1                    # make release 1 live again
 snaphop-maps withdraw-map MAP_ID --yes
 snaphop-maps replace-key                                        # before the key's expiresAt
 ```

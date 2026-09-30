@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -247,6 +248,13 @@ func (inv *invocation) arguments() (map[string]any, int, bool) {
 				return nil, code, false
 			}
 			arguments[spec.Argument] = value
+		case kindInteger:
+			raw := *inv.strings[spec.Name]
+			number, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				return nil, inv.usage("INVALID_FLAG", fmt.Sprintf("--%s %q is not a whole number.", spec.Name, raw), "Give it as digits, such as 2."), false
+			}
+			arguments[spec.Argument] = number
 		default:
 			arguments[spec.Argument] = *inv.strings[spec.Name]
 		}
@@ -541,6 +549,7 @@ var repeatHints = map[string]string{
 	"update_map":     "The change may have been saved and published. Run `snaphop-maps get-map ID` and compare its draft with the change before repeating it.",
 	"publish_map":    "It may have been published. Run `snaphop-maps get-map ID`: unpublishedChanges false means it was. Repeating publishes another release and counts against the publication limit.",
 	"withdraw_map":   "It is safe to repeat: MAP_NOT_FOUND then means the first request withdrew it.",
+	"rollback_map":   "It may have been made live. Run `snaphop-maps get-map ID`: if activeRelease is the release you asked for, it was.",
 	"replace_key":    "Repeat it with the same key, which still works until a new key is used. Only the new key you go on to use is kept.",
 }
 
@@ -557,6 +566,8 @@ var refusalHints = map[string]string{
 	"MAP_NOT_FOUND":                 "Run `snaphop-maps list-maps` for the ids this key can reach.",
 	"MAP_LIMIT_REACHED":             "The workspace holds as many maps as it may. Withdraw one it no longer needs with `snaphop-maps withdraw-map ID --yes`.",
 	"DRAFT_CHANGED":                 "Read the map again with `snaphop-maps get-map ID` and redo the change.",
+	"RELEASE_UNAVAILABLE":           "Run `snaphop-maps list-releases ID` for the releases that can be made live. A map never published has none.",
+	"ACTIVE_RELEASE_CHANGED":        "Another release went live since you looked. Run `snaphop-maps list-releases ID` and decide again.",
 	"INVALID_ARGUMENTS":             "Run `snaphop-maps tools` for the arguments each tool takes.",
 	"UNKNOWN_TOOL":                  "Run `snaphop-maps tools` for the tools the service has.",
 }

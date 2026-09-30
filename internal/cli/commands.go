@@ -13,6 +13,7 @@ const (
 	kindBool   kind = "boolean" // sent only when given, so the service's default applies
 	kindLocal  kind = "switch"  // read by this program, never sent
 
+	kindInteger  kind = "integer"  // sent as a JSON number
 	kindDuration kind = "duration" // a Go duration, such as 90s
 )
 
@@ -105,6 +106,22 @@ func commands() []*command {
 			Example: `snaphop-maps register-agent --name "Trip planner"`,
 		},
 		{
+			Name: "get-account", Tool: "get_account", NeedsKey: true, ReadOnly: true,
+			Summary:     "Read the account the key belongs to",
+			Description: "Returns the account the key belongs to: its workspace, its role and what that role permits.",
+			Flags:       []flagSpec{argsFlag},
+			Example:     "snaphop-maps get-account",
+		},
+		{
+			Name: "get-installation", Tool: "get_installation", NeedsKey: true, ReadOnly: true,
+			Summary: "What applies to every map here",
+			Description: "Returns what applies to every map on this installation: the styles a map may choose, the " +
+				"basemap a publication would use, where published maps are delivered from, and whether publication is " +
+				"configured.",
+			Flags:   []flagSpec{argsFlag},
+			Example: "snaphop-maps get-installation",
+		},
+		{
 			Name: "create-map", Tool: "create_map", NeedsKey: true,
 			Summary: "Create a map and publish it",
 			Description: "Creates a map and, unless --publish=false, publishes it. Returns the map's id and, under " +
@@ -149,12 +166,44 @@ func commands() []*command {
 			Example: "snaphop-maps publish-map MAP_ID",
 		},
 		{
+			Name: "list-releases", Tool: "list_releases", NeedsKey: true, ReadOnly: true, Positional: "id",
+			Summary: "List a map's releases",
+			Description: "Lists every release the map was published as, newest first: each one's number, state, style " +
+				"and when it was published and last made live.",
+			Flags:   []flagSpec{idFlag, argsFlag},
+			Example: "snaphop-maps list-releases MAP_ID",
+		},
+		{
+			Name: "rollback-map", Tool: "rollback_map", NeedsKey: true, Positional: "id",
+			Summary: "Make an earlier release live again",
+			Description: "Makes an earlier release of the map live again: its page link and every embed show it within " +
+				"about a minute. The draft is left as it is. Returns the release now live. It is refused if another " +
+				"release went live since the one --expected-active names, which defaults to the one live now.",
+			Flags: []flagSpec{
+				idFlag,
+				{Name: "release", Argument: "release", Kind: kindInteger, Required: true,
+					Description: "The number of the release to make live, as list-releases gave it."},
+				{Name: "expected-active", Argument: "expectedActive", Kind: kindInteger,
+					Description: "The release you expect to be live now; the rollback is refused if another is. Defaults to the one live when it is called."},
+				argsFlag,
+			},
+			Example: "snaphop-maps rollback-map MAP_ID --release 1",
+		},
+		{
 			Name: "withdraw-map", Tool: "withdraw_map", NeedsKey: true, Destructive: true, Positional: "id",
 			Summary: "Take a map down for good",
 			Description: "Takes a map down for good: its page link and every embed stop showing it, and it leaves the " +
 				"workspace. It cannot be undone, so it needs --yes.",
 			Flags:   []flagSpec{idFlag, yesFlag, argsFlag},
 			Example: "snaphop-maps withdraw-map MAP_ID --yes",
+		},
+		{
+			Name: "list-activity", Tool: "list_activity", NeedsKey: true, ReadOnly: true,
+			Summary: "The workspace's recent activity",
+			Description: "Lists the workspace's 50 most recent events, newest first: what was done, to what, by whom, " +
+				"and when.",
+			Flags:   []flagSpec{argsFlag},
+			Example: "snaphop-maps list-activity",
 		},
 		{
 			Name: "replace-key", Tool: "replace_key", NeedsKey: true,
