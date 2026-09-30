@@ -85,8 +85,20 @@ func TestANewKeyThatCannotBeKeptIsStillPrinted(t *testing.T) {
 		h := newHarness(t, s)
 		blocker := h.file("blocker", "")
 		h.vars["SNAPHOP_MAPS_CREDENTIALS"] = filepath.Join(blocker, "credentials.json")
+		// Unix cannot read through a file and refuses before sending anything; Windows reads the path
+		// as missing, registers, and cannot keep the key. Either way no key is lost unseen.
 		o := h.run("register-agent", "--name", "A")
-		o.failure(t, exitFailure, "CREDENTIALS_UNREADABLE") // a file where the directory should be
+		if o.code == exitNotSaved {
+			o.failure(t, exitNotSaved, "CREDENTIALS_NOT_SAVED")
+			if decode(t, o.stdout)["apiKey"] != "shk_only_copy" {
+				t.Fatalf("stdout = %s", o.stdout)
+			}
+			return
+		}
+		o.failure(t, exitFailure, "CREDENTIALS_UNREADABLE")
+		if len(s.received()) != 0 {
+			t.Fatal("registered although the key could not be kept")
+		}
 	})
 	t.Run("the file cannot be written", func(t *testing.T) {
 		t.Parallel()
