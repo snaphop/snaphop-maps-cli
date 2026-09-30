@@ -261,3 +261,47 @@ func TestVersion(t *testing.T) {
 		t.Fatalf("version = %v", out)
 	}
 }
+
+// TestAKeyKeptMeanwhileIsNeverLost has another command keep a key while this one waits for its
+// answer, as parallel runs do. What this one keeps is decided against the file as it is by then.
+func TestAKeyKeptMeanwhileIsNeverLost(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		before    string
+		args      []string
+		answer    answer
+		meanwhile string
+		exit      int
+		after     string
+	}{
+		{"a registration while another registers", "", []string{"register-agent", "--name", "A"}, tool(registered("shk_new")), "shk_other", exitNotSaved, "shk_other"},
+		{"an overwrite after the account changed", "shk_old", []string{"register-agent", "--name", "A", "--overwrite"}, tool(registered("shk_new")), "shk_other", exitNotSaved, "shk_other"},
+		{"an overwrite of the account seen", "shk_old", []string{"register-agent", "--name", "A", "--overwrite"}, tool(registered("shk_new")), "shk_old", exitOK, "shk_new"},
+		{"a replacement after another key was kept", "shk_old", []string{"replace-key"}, tool(replaced("shk_new")), "shk_other", exitNotSaved, "shk_other"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			var h *harness
+			s := newService(t, func(request) answer {
+				h.keep(credentials.Account{APIKey: tc.meanwhile})
+				return tc.answer
+			})
+			h = newHarness(t, s)
+			if tc.before != "" {
+				h.keep(credentials.Account{APIKey: tc.before})
+			}
+			o := h.run(tc.args...)
+			if o.code != tc.exit || decode(t, o.stdout)["apiKey"] != "shk_new" {
+				t.Fatalf("exit %d, stdout %s, stderr %s", o.code, o.stdout, o.stderr)
+			}
+			if tc.exit == exitNotSaved && !strings.Contains(o.stderr, "CREDENTIALS_NOT_SAVED") {
+				t.Fatalf("stderr = %s", o.stderr)
+			}
+			if account, _ := h.kept(); account.APIKey != tc.after {
+				t.Fatalf("kept %s, want %s", account.APIKey, tc.after)
+			}
+		})
+	}
+}

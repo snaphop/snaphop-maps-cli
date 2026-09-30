@@ -5,6 +5,35 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Security
+
+- **`skill install` no longer writes through links.** A project could plant `.claude/skills/snaphop-maps/SKILL.md`
+  as a link to the credentials file, and `skill install --project` then replaced every kept key with the skill.
+  The install now writes only inside the home or `--project` directory, refuses a skill directory that is a link
+  or a link that leads outside, and replaces a link where a file goes. `skill pack --output` replaces a link too.
+- **`$SNAPHOP_MAPS_API_KEY` is only sent to the environment's service** (ADR 0004): `$SNAPHOP_MAPS_URL`, or
+  `https://maps.snaphop.ai` when that is not set. `--url` alone, such as a prompt could add to an agent's command,
+  no longer sends it elsewhere; the command then uses the key kept for that service, or fails with
+  `API_KEY_REQUIRED`.
+- **Commands that keep keys at the same time no longer lose one.** Every writer of the credentials file now holds
+  a lock, and `register-agent` and `replace-key` decide what to keep against the file as it is then; a key another
+  command kept meanwhile is left in place, and the new one is printed with exit status 6. The file is also synced
+  before and after it is renamed into place, so a crash cannot leave it empty.
+- **Errors and warnings never show a key.** A key the command knows, from `--api-key`, `$SNAPHOP_MAPS_API_KEY` or
+  the one it sent, is shown as `[REDACTED]` wherever a mistyped command line or an error body echoes it.
+- Every GitHub Action is pinned to a full commit SHA, kept current by Dependabot, and `scripts/release-check.sh`
+  refuses a release it cannot check against `main`.
+
+### Fixed
+
+- An answer that arrived with HTTP 200 but could not be read, such as one without structured content or one over
+  8 MiB, was reported with `outcomeKnown: true` and "Nothing was carried out", although the tool may have run: an
+  agent that repeated `create-map` could make two maps. It is now `outcomeKnown: false` with the tool's advice on
+  repeating it, as is a JSON-RPC internal error.
+- A JSON argument read from standard input was cut at 8 MiB and then refused as malformed. Standard input and
+  `@file` are now both limited to 8 MiB and refused with `INPUT_TOO_LARGE`, and `@file` is read relative to the
+  working directory a run is given.
+
 ## 0.2.0 — 2026-09-30
 
 ### Added

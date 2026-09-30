@@ -134,23 +134,27 @@ func TestFailuresOfTheExchange(t *testing.T) {
 		},
 		"not json-rpc": {
 			client: answering(200, nil, `{"jsonrpc":"1.0"}`),
-			code:   "INVALID_RESPONSE", message: "not a JSON-RPC reply", status: 200, known: true,
+			code:   "INVALID_RESPONSE", message: "not a JSON-RPC reply", status: 200, known: false,
 		},
 		"not json": {
 			client: answering(200, nil, `<html>`),
-			code:   "INVALID_RESPONSE", message: "<html>", status: 200, known: true,
+			code:   "INVALID_RESPONSE", message: "<html>", status: 200, known: false,
 		},
 		"json-rpc error": {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`),
 			code:   "JSONRPC_-32601", message: "Method not found", status: 200, known: true,
 		},
+		"json-rpc internal error": {
+			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}`),
+			code:   "JSONRPC_-32603", message: "Internal error", status: 200, known: false,
+		},
 		"another request's reply": {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":2,"result":{}}`),
-			code:   "INVALID_RESPONSE", message: "no result", status: 200, known: true,
+			code:   "INVALID_RESPONSE", message: "no result", status: 200, known: false,
 		},
 		"too large": {
 			client: answering(200, nil, strings.Repeat(" ", MaxResponseBytes+1)),
-			code:   "RESPONSE_TOO_LARGE", message: "8 MiB", status: 200, known: true,
+			code:   "RESPONSE_TOO_LARGE", message: "8 MiB", status: 200, known: false,
 		},
 		"cut off": {
 			client: &Client{Endpoint: "https://maps.example/mcp", HTTP: &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
@@ -178,11 +182,11 @@ func TestFailuresOfTheExchange(t *testing.T) {
 		},
 		"malformed tool result": {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"result":[]}`),
-			code:   "INVALID_RESPONSE", message: "malformed", known: true,
+			code:   "INVALID_RESPONSE", message: "malformed", status: 200, known: false,
 		},
 		"tool result without content": {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"result":{"structuredContent":null,"content":[{"type":"text","text":"done"}]}}`),
-			code:   "INVALID_RESPONSE", message: "no structured content", known: true,
+			code:   "INVALID_RESPONSE", message: "no structured content", status: 200, known: false,
 		},
 	}
 	for name, tc := range cases {

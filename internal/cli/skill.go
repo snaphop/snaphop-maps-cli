@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/snaphop/snaphop-maps-cli/internal/atomicfile"
 	"github.com/snaphop/snaphop-maps-cli/skills"
 )
 
@@ -100,23 +101,52 @@ func installSkill(inv *invocation) int {
 		}
 		base = home
 	}
-	target := filepath.Join(base, filepath.FromSlash(client.Directory), skills.Name)
-	_, statErr := os.Stat(target)
+	directory := filepath.Join(filepath.FromSlash(client.Directory), skills.Name)
+	target := filepath.Join(base, directory)
 	files := skillFiles()
-	for _, name := range files {
-		destination := filepath.Join(target, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
-			return inv.fail("SKILL_NOT_INSTALLED", err.Error()+".", "Check that "+base+" is a directory you can write to.")
-		}
-		if err := os.WriteFile(destination, skillFile(name), 0o644); err != nil {
-			return inv.fail("SKILL_NOT_INSTALLED", err.Error()+".", "Check that "+target+" holds nothing but the skill.")
-		}
+	replaced, err := writeSkill(base, directory, files)
+	if err != nil {
+		return inv.fail("SKILL_NOT_INSTALLED", err.Error()+".",
+			"Check that "+base+" is a directory you can write to, and that "+target+" is a directory of its own inside it, not a link, holding nothing but the skill.")
 	}
 	document, _ := json.Marshal(map[string]any{
-		"client": client.Name, "reads": client.Reads, "path": target, "files": files, "replaced": statErr == nil,
+		"client": client.Name, "reads": client.Reads, "path": target, "files": files, "replaced": replaced,
 	})
 	inv.write(inv.env.Stdout, document)
 	return exitOK
+}
+
+// writeSkill writes the skill's files into directory under base, and nowhere else: a link that leads
+// out of base is refused, the skill's directory may not be a link, and a link where a file goes is
+// replaced rather than followed. A project may come from anyone, and a link it holds must not turn an
+// install into a write over the user's own files, such as the credentials file. It says whether a copy
+// was there before.
+func writeSkill(base, directory string, files []string) (bool, error) {
+	err := os.MkdirAll(base, 0o755)
+	var root *os.Root
+	if err == nil {
+		root, err = os.OpenRoot(base)
+	}
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	info, err := root.Lstat(directory)
+	replaced := err == nil
+	if replaced && !info.IsDir() {
+		return false, fmt.Errorf("%s is a link or a file, not the skill's own directory", filepath.Join(base, directory))
+	}
+	for _, name := range files {
+		file := filepath.Join(directory, filepath.FromSlash(name))
+		err := root.MkdirAll(filepath.Dir(file), 0o755)
+		if err == nil {
+			err = atomicfile.WriteIn(root, file, skillFile(name), 0o644)
+		}
+		if err != nil {
+			return false, err
+		}
+	}
+	return replaced, nil
 }
 
 // packSkill writes the skill as a zip holding its one directory, the shape claude.ai, ChatGPT and
@@ -134,7 +164,7 @@ func packSkill(inv *invocation) int {
 		_, _ = entry.Write(skillFile(name))
 	}
 	_ = writer.Close()
-	if err := os.WriteFile(output, archive.Bytes(), 0o644); err != nil {
+	if err := atomicfile.Write(output, archive.Bytes(), 0o644); err != nil {
 		return inv.fail("SKILL_NOT_PACKED", err.Error()+".", "Give --output a file in a directory you can write to.")
 	}
 	sum := sha256.Sum256(archive.Bytes())

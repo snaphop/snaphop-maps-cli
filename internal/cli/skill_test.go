@@ -298,3 +298,89 @@ func TestSkillPackMakesAnUploadableZip(t *testing.T) {
 		t.Fatalf("packing twice gave %v and %v", out, again)
 	}
 }
+
+// link makes a symbolic link, or skips a test on a system that will not let it.
+func link(t *testing.T, target, name string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, name); err != nil {
+		t.Skipf("cannot make a link here: %v", err)
+	}
+}
+
+// TestSkillInstallNeverWritesThroughALink installs into a project that plants links, as a cloned
+// repository could, aimed at a file the user cannot get back: the credentials file.
+func TestSkillInstallNeverWritesThroughALink(t *testing.T) {
+	t.Parallel()
+	const credentials = `{"version": 1, "accounts": {"https://maps.snaphop.ai": {"apiKey": "shk_irreplaceable"}}}`
+	cases := []struct {
+		name  string
+		plant func(project, victim string)
+		code  string
+	}{
+		{"the skill file is a link", func(project, victim string) {
+			link(t, filepath.Join(victim, "credentials.json"), filepath.Join(project, ".claude", "skills", "snaphop-maps", "SKILL.md"))
+		}, ""},
+		{"the skill's directory is a link", func(project, victim string) {
+			link(t, victim, filepath.Join(project, ".claude", "skills", "snaphop-maps"))
+		}, "SKILL_NOT_INSTALLED"},
+		{"a directory above it leads out of the project", func(project, victim string) {
+			link(t, victim, filepath.Join(project, ".claude"))
+		}, "SKILL_NOT_INSTALLED"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, nil)
+			project, victim := filepath.Join(h.dir, "project"), filepath.Join(h.dir, "victim")
+			if err := os.MkdirAll(filepath.Join(victim, "skills", "snaphop-maps"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(victim, "credentials.json"), []byte(credentials), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			tc.plant(project, victim)
+			o := h.run("skill", "install", "--client", "claude", "--project", project)
+			if tc.code == "" {
+				o.success(t)
+				if data, err := os.ReadFile(filepath.Join(project, ".claude", "skills", "snaphop-maps", "SKILL.md")); err != nil || string(data) != skillText(t) {
+					t.Fatalf("the skill was not installed in place of the link: %v", err)
+				}
+			} else if p := o.failure(t, exitFailure, tc.code); !strings.Contains(p.Hint, "not a link") {
+				t.Fatalf("hint = %q", p.Hint)
+			}
+			if data, _ := os.ReadFile(filepath.Join(victim, "credentials.json")); string(data) != credentials {
+				t.Fatalf("the credentials file now holds %.60q", data)
+			}
+			if entries, _ := os.ReadDir(filepath.Join(victim, "skills", "snaphop-maps")); len(entries) != 0 {
+				t.Fatalf("wrote outside the project: %v", entries)
+			}
+		})
+	}
+}
+
+func TestSkillInstallRefusesAFileWhereItsDirectoryGoes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, nil)
+	if err := os.MkdirAll(filepath.Join(h.dir, ".claude", "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h.file(filepath.Join(".claude", "skills", "snaphop-maps"), "mine")
+	h.run("skill", "install", "--client", "claude", "--project", h.dir).failure(t, exitFailure, "SKILL_NOT_INSTALLED")
+	if data, _ := os.ReadFile(filepath.Join(h.dir, ".claude", "skills", "snaphop-maps")); string(data) != "mine" {
+		t.Fatalf("the file now holds %q", data)
+	}
+}
+
+func TestSkillPackReplacesALinkInsteadOfFollowingIt(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, nil)
+	victim := h.file("victim", "keep me")
+	link(t, victim, filepath.Join(h.dir, defaultSkillZip))
+	h.run("skill", "pack").success(t)
+	if data, _ := os.ReadFile(victim); string(data) != "keep me" {
+		t.Fatalf("the link's target now holds %.20q", data)
+	}
+}

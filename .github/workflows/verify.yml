@@ -13,17 +13,18 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # This repository is public, so pull requests from forks run here: only on GitHub-hosted runners,
-# with a read-only token and no secrets. Never move these jobs to a self-hosted runner.
+# with a read-only token and no secrets. Never move these jobs to a self-hosted runner. Every action is
+# pinned to a full commit SHA, which Dependabot keeps current.
 jobs:
   check:
     name: Format, vet, race tests and 100% coverage
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with: {go-version-file: go.mod, cache: true}
       - run: make check
       - name: Dependency vulnerabilities
@@ -38,10 +39,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with: {go-version-file: go.mod, cache: true}
       - run: go test -race -shuffle=on ./...
 
@@ -55,11 +56,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with: {go-version-file: go.mod, cache: true}
       - name: Build
         env:
@@ -69,7 +70,7 @@ jobs:
           suffix=""
           if [ "$GOOS" = windows ]; then suffix=.exe; fi
           make "dist/snaphop-maps-$GOOS-$GOARCH$suffix"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: snaphop-maps-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/snaphop-maps-*

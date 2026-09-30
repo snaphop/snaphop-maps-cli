@@ -1,0 +1,10 @@
+# Keeps the actions' pinned commit SHAs current. The module depends on the standard library alone, so
+# there is nothing else to update.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: CI

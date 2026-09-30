@@ -98,7 +98,9 @@ the skill always matches the version you run:
 | Any client reading `.agents/skills` | `snaphop-maps skill install --client agents`        | `~/.agents/skills/snaphop-maps` |
 | claude.ai, ChatGPT, model APIs | Upload the zip from `snaphop-maps skill pack` (attached to each release from v0.2.0) | — |
 
-Add `--project DIR` to install the skill into one project instead of your home directory. `snaphop-maps skill`
+Add `--project DIR` to install the skill into one project instead of your home directory. The install writes only
+the skill's own files, only inside that directory: it refuses a skill directory that is a link or a link that
+leads outside it, and replaces a link where a file goes rather than writing through it. `snaphop-maps skill`
 prints it, which an assistant can read to learn the CLI in one step. A skill needs a client that can run the binary.
 An assistant without a shell can use the same service as an MCP server at `https://maps.snaphop.ai/mcp`.
 
@@ -125,18 +127,22 @@ about to expire, is `{"warning": {...}}` on standard error and does not change t
 
 The key the service issues is the account's only credential, and the service shows it once. `register-agent` and
 `replace-key` keep it in `snaphop-maps/credentials.json` under the user's configuration directory. The file is
-created with mode `0600`, written whole and renamed into place. It holds one account per service address, and a
-key is only ever sent to the service that issued it.
+created with mode `0600`, written whole, synced and renamed into place, under a lock so that commands run at the
+same time never lose each other's keys. It holds one account per service address, and a key is only ever sent to
+the service that issued it.
 
 A command sends the first key it finds: `--api-key`, then `$SNAPHOP_MAPS_API_KEY`, then the file. The key goes in
-an `Authorization` bearer header. `register-agent` will not replace an account already kept for the same service
+an `Authorization` bearer header. `$SNAPHOP_MAPS_API_KEY` is only sent to the service the environment names,
+`$SNAPHOP_MAPS_URL` or else `https://maps.snaphop.ai`, so `--url` alone cannot send it anywhere else (ADR 0004).
+A key never appears in an error or a warning: one echoed back, by a mistyped command line or by an error body, is
+shown as `[REDACTED]`. `register-agent` will not replace an account already kept for the same service
 unless given `--overwrite`. `replace-key` only replaces the key it was called with. A replaced key keeps working
 until the new key is first used, so an answer lost on the way costs nothing: run `replace-key` again.
 
 | Variable                   | Default                                     |
 | -------------------------- | ------------------------------------------- |
 | `SNAPHOP_MAPS_URL`         | `https://maps.snaphop.ai`                   |
-| `SNAPHOP_MAPS_API_KEY`     | the key kept for the service                |
+| `SNAPHOP_MAPS_API_KEY`     | the key kept for the service; only sent to `SNAPHOP_MAPS_URL`'s service |
 | `SNAPHOP_MAPS_CREDENTIALS` | `<config dir>/snaphop-maps/credentials.json` |
 
 Plain `http` is refused except to this machine (`localhost`, `127.0.0.1`, `::1`), so a key is never sent in the

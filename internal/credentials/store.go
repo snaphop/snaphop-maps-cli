@@ -1,18 +1,18 @@
 // Package credentials keeps an agent's API key somewhere that outlasts the conversation that
 // obtained it. The key is shown once and is the account's only credential, so the store is a
-// file readable only by its owner, written whole and renamed into place, holding one account per
-// service address so that a key is only ever sent to the service that issued it.
+// file readable only by its owner, written whole and renamed into place under a lock, holding one
+// account per service address so that a key is only ever sent to the service that issued it.
 package credentials
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/snaphop/snaphop-maps-cli/internal/atomicfile"
 )
 
 // FileVersion is the store's format.
@@ -38,10 +38,10 @@ type file struct {
 type Store struct {
 	Path string
 
-	// mkdirAll, writeFile and rename default to the os package's; tests make them fail.
-	mkdirAll  func(string, os.FileMode) error
-	writeFile func(string, []byte, os.FileMode) error
-	rename    func(string, string) error
+	// mkdirAll, write and lock default to os.MkdirAll, atomicfile.Write and lockFile; tests make them fail.
+	mkdirAll func(string, os.FileMode) error
+	write    func(string, []byte, os.FileMode) error
+	lock     func(*os.File) error
 }
 
 // DefaultPath is the store's path under the user's configuration directory.
@@ -53,7 +53,8 @@ func DefaultPath(configDir func() (string, error)) (string, error) {
 	return filepath.Join(dir, "snaphop-maps", "credentials.json"), nil
 }
 
-// Get returns the account kept for a service address, if there is one.
+// Get returns the account kept for a service address, if there is one. The file is only ever
+// replaced whole, so it is read without the lock.
 func (s Store) Get(service string) (Account, bool, error) {
 	f, err := s.load()
 	if err != nil {
@@ -66,32 +67,60 @@ func (s Store) Get(service string) (Account, bool, error) {
 // Put keeps an account for a service address, replacing any kept for it, and leaves every other
 // address's account as it was.
 func (s Store) Put(service string, account Account) error {
+	return s.Update(service, func(Account, bool) (Account, error) { return account, nil })
+}
+
+// Update changes the account kept for a service address, and leaves every other address's account as
+// it was. change is given the account kept now, if any, and returns the one to keep, or an error that
+// leaves the file as it was. The file's lock is held from reading the file to replacing it, so that
+// commands keeping keys at the same time never lose one, and change decides on what is kept now.
+func (s Store) Update(service string, change func(kept Account, found bool) (Account, error)) error {
+	mkdirAll, write, lock := os.MkdirAll, atomicfile.Write, lockFile
+	if s.mkdirAll != nil {
+		mkdirAll, write, lock = s.mkdirAll, s.write, s.lock
+	}
+	dir := filepath.Dir(s.Path)
+	if err := mkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("cannot create %s: %w", dir, err)
+	}
+	unlock, err := s.acquire(lock)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	f, err := s.load()
+	if err != nil {
+		return err
+	}
+	kept, found := f.Accounts[service]
+	account, err := change(kept, found)
 	if err != nil {
 		return err
 	}
 	f.Accounts[service] = account
 	// A struct of strings always encodes.
 	data, _ := json.MarshalIndent(f, "", "  ")
-	mkdirAll, writeFile, rename := os.MkdirAll, os.WriteFile, os.Rename
-	if s.mkdirAll != nil {
-		mkdirAll, writeFile, rename = s.mkdirAll, s.writeFile, s.rename
-	}
-	dir := filepath.Dir(s.Path)
-	if err := mkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("cannot create %s: %w", dir, err)
-	}
-	suffix := make([]byte, 8)
-	_, _ = rand.Read(suffix)
-	temporary := s.Path + ".tmp-" + hex.EncodeToString(suffix)
-	if err := writeFile(temporary, append(data, '\n'), 0o600); err != nil {
-		return fmt.Errorf("cannot write %s: %w", temporary, err)
-	}
-	if err := rename(temporary, s.Path); err != nil {
-		_ = os.Remove(temporary)
-		return fmt.Errorf("cannot replace %s: %w", s.Path, err)
+	if err := write(s.Path, append(data, '\n'), 0o600); err != nil {
+		return fmt.Errorf("cannot write %s: %w", s.Path, err)
 	}
 	return nil
+}
+
+// acquire waits for the lock that every writer holds, on a file beside the credentials file: the
+// credentials file itself is replaced, not changed in place, so it cannot hold a lock.
+func (s Store) acquire(lock func(*os.File) error) (func(), error) {
+	file, err := os.OpenFile(s.Path+".lock", os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("cannot lock %s: %w", s.Path, err)
+	}
+	if err := lock(file); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("cannot lock %s: %w", s.Path, err)
+	}
+	return func() {
+		unlockFile(file)
+		_ = file.Close()
+	}, nil
 }
 
 func (s Store) load() (file, error) {

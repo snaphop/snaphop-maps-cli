@@ -52,11 +52,19 @@ type Error struct {
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
-// OutcomeKnown is true when the server answered in a way that says the request was not carried
-// out, or was carried out and answered; false when it may have been carried out unseen: no answer,
-// or an answer from a gateway or a failing server.
+// OutcomeKnown is true when the request was not carried out: it was never sent, or the server
+// refused it with an HTTP error below 500 or a JSON-RPC error. It is false when it may have been
+// carried out unseen: no answer, an answer from a gateway or a failing server, a JSON-RPC internal
+// error, or a successful answer this client could not read.
 func (e *Error) OutcomeKnown() bool {
-	return e.Code != "TIMEOUT" && e.Code != "TRANSPORT" && e.Status < 500
+	switch {
+	case e.Code == "TIMEOUT" || e.Code == "TRANSPORT":
+		return false
+	case e.Status == http.StatusOK:
+		return strings.HasPrefix(e.Code, "JSONRPC_") && e.Code != "JSONRPC_-32603"
+	default:
+		return e.Status < 500
+	}
 }
 
 type request struct {
@@ -140,7 +148,7 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 		} `json:"content"`
 	}
 	if err := json.Unmarshal(result, &decoded); err != nil {
-		return ToolResult{}, &Error{Code: "INVALID_RESPONSE", Message: "The tool's result is malformed: " + err.Error()}
+		return ToolResult{}, &Error{Code: "INVALID_RESPONSE", Message: "The tool's result is malformed: " + err.Error(), Status: http.StatusOK}
 	}
 	structured := decoded.Structured
 	if len(structured) == 0 || string(structured) == "null" {
@@ -153,7 +161,7 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 		}
 	}
 	if len(structured) == 0 || string(structured) == "null" {
-		return ToolResult{}, &Error{Code: "INVALID_RESPONSE", Message: "The tool's result carries no structured content."}
+		return ToolResult{}, &Error{Code: "INVALID_RESPONSE", Message: "The tool's result carries no structured content.", Status: http.StatusOK}
 	}
 	return ToolResult{Structured: structured, IsError: decoded.IsError}, nil
 }

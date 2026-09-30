@@ -20,26 +20,35 @@ observe its arguments and output.
 
 - A key MUST only be sent as an `Authorization` bearer header, over https, or over http to a loopback address. The
   CLI MUST NOT follow redirects, which could carry a request to another host.
-- A key kept in the credentials file MUST only be sent to the service address it was kept under.
-- The credentials file MUST be created readable only by its owner (`0600`, in a `0700` directory) and written whole
-  and renamed into place, so that an interrupted write leaves the previous file intact.
+- A key kept in the credentials file MUST only be sent to the service address it was kept under. A key from
+  `$SNAPHOP_MAPS_API_KEY` MUST only be sent to the service the environment names, `$SNAPHOP_MAPS_URL` or else the
+  default, never to one that `--url` alone names (ADR 0004).
+- The credentials file MUST be created readable only by its owner (`0600`, in a `0700` directory), written whole,
+  synced and renamed into place, so that an interrupted write or a crash leaves the previous file intact. Every
+  writer MUST hold the file's lock from reading it to renaming its replacement, and decide what to keep against the
+  file as it is under the lock.
 - No command may silently lose a kept key. Registering over a kept account needs `--overwrite`, and replacing a key
   replaces only the key that was used.
-- Only the answer that issued a key may print it. `credentials`, errors, warnings and hints MUST NOT contain a key.
+- Only the answer that issued a key may print it. `credentials`, errors, warnings and hints MUST NOT contain a key:
+  a key the run knows that is echoed back, by the command line or by a response body, is redacted.
+- An answer that arrived but could not be read MUST be reported with `outcomeKnown` false: the tool may have run.
 - The CLI MUST NOT execute anything the service returns or render it as markup. Its output is JSON, and map text
   stays plain text.
 - `skill install` MUST write only the skill's own files, in the skill's own directory under the chosen client's
-  skills directory. The skill MUST NOT tell an assistant to reveal, log or pass on the API key, or to withdraw a
+  skills directory, inside the home or `--project` directory. A project may come from anyone: the install MUST NOT
+  follow a link out of that directory, MUST refuse a skill directory that is a link, and MUST replace a link where
+  a file goes rather than write through it. `skill pack` MUST likewise replace, not follow, a link at its output. The skill MUST NOT tell an assistant to reveal, log or pass on the API key, or to withdraw a
   map without the user's agreement.
 - The module MUST depend on the Go standard library alone. A new dependency needs an ADR and review.
 - CI runs untrusted pull requests from forks. It MUST use GitHub-hosted runners, a read-only token and no secrets,
-  and MUST NOT use `pull_request_target`.
+  and MUST NOT use `pull_request_target`. Every action MUST be pinned to a full commit SHA.
 - Release binaries MUST be built and published only by the Release workflow, from a tag on `main`, with a build
   provenance attestation for each. Only its publishing job may hold write permissions.
 - Tests MUST NOT reach production. Registering agents or publishing maps on production is not a verification step.
 
 `--api-key` is visible to other processes on the same machine. Prefer `$SNAPHOP_MAPS_API_KEY` or the credentials
-file.
+file. On a system other than Linux, macOS, the BSDs and Windows the credentials file cannot be locked, and commands
+that keep keys at the same time may lose one.
 
 ## Supported versions
 

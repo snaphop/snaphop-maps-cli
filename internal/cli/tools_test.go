@@ -204,6 +204,8 @@ func TestLocalRefusalsSendNothing(t *testing.T) {
 		{"two json values", []string{"create-map", "--name", "N", "--markers", "[] []"}, exitUsage, "INVALID_JSON", nil},
 		{"markers not json", []string{"create-map", "--name", "N", "--markers", "[{"}, exitUsage, "INVALID_JSON", nil},
 		{"missing file", []string{"create-map", "--name", "N", "--markers", "@/no/such/file.json"}, exitUsage, "INPUT_UNREADABLE", nil},
+		{"file is a directory", []string{"create-map", "--name", "N", "--markers", "@."}, exitUsage, "INPUT_UNREADABLE", nil},
+		{"stdin too large", []string{"create-map", "--name", "N", "--markers", "-"}, exitUsage, "INPUT_TOO_LARGE", strings.NewReader(strings.Repeat(" ", maxInputBytes+1))},
 		{"stdin twice", []string{"create-map", "--name", "N", "--markers", "-", "--view", "-"}, exitUsage, "INVALID_FLAG", strings.NewReader("[]")},
 		{"stdin unreadable", []string{"create-map", "--name", "N", "--markers", "-"}, exitFailure, "INPUT_UNREADABLE", failingReader{}},
 		{"withdraw unconfirmed", []string{"withdraw-map", "m1"}, exitUsage, "CONFIRMATION_REQUIRED", nil},
@@ -329,7 +331,10 @@ func TestFailedExchangesSayWhetherToRepeat(t *testing.T) {
 		{"rate limited", answer{status: 429, header: http.Header{"Retry-After": {"30"}}}, []string{"list-maps"}, "HTTP_429", true, "after the 30"},
 		{"rate limited without a time", answer{status: 429}, []string{"list-maps"}, "HTTP_429", true, "try again later."},
 		{"not the service", answer{status: 404, body: "no"}, []string{"list-maps"}, "HTTP_404", true, "--url"},
-		{"not json-rpc", answer{status: 200, body: "<html>"}, []string{"tools"}, "INVALID_RESPONSE", true, "--url"},
+		{"not json-rpc", answer{status: 200, body: "<html>"}, []string{"tools"}, "INVALID_RESPONSE", false, "--url"},
+		// The tool ran, but its answer cannot be read: repeating it could create a second map.
+		{"create answered unreadably", result(map[string]any{"content": []any{map[string]any{"type": "text", "text": "Created"}}}),
+			[]string{"create-map", "--name", "N"}, "INVALID_RESPONSE", false, "list-maps"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -526,5 +531,137 @@ func TestTheDefaultConfigurationDirectory(t *testing.T) {
 	h.run("list-maps").success(t)
 	if r := s.only(); r.Auth != "Bearer shk_default" {
 		t.Fatalf("Authorization = %q", r.Auth)
+	}
+}
+
+func TestAFileTooLargeIsRefused(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, newService(t, never(t)))
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+	h.file("markers.json", "[]"+strings.Repeat(" ", maxInputBytes))
+	if p := h.run("create-map", "--name", "N", "--markers", "@markers.json").failure(t, exitUsage, "INPUT_TOO_LARGE"); !strings.Contains(p.Message, "markers.json") {
+		t.Fatalf("error = %+v", p)
+	}
+}
+
+func TestAFileIsReadFromTheWorkingDirectory(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return tool(map[string]any{"id": "m1"}) })
+	h := newHarness(t, s)
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+	h.file("markers.json", `[{"position": [1, 2], "title": "From a file"}]`)
+	h.run("create-map", "--name", "N", "--markers", "@markers.json").success(t)
+	if sent, _ := json.Marshal(s.only().Arguments["markers"]); string(sent) != `[{"position":[1,2],"title":"From a file"}]` {
+		t.Fatalf("sent %s", sent)
+	}
+}
+
+// TestAnEnvironmentKeyOnlyGoesToItsService is ADR 0004: --url alone, such as a prompt could slip into
+// an agent's command, cannot send $SNAPHOP_MAPS_API_KEY to another service.
+func TestAnEnvironmentKeyOnlyGoesToItsService(t *testing.T) {
+	t.Parallel()
+	t.Run("--url names another service", func(t *testing.T) {
+		t.Parallel()
+		home, elsewhere := newService(t, never(t)), newService(t, never(t))
+		h := newHarness(t, home)
+		h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_environment"
+		p := h.run("list-maps", "--url", elsewhere.server.URL).failure(t, exitUsage, "API_KEY_REQUIRED")
+		if !strings.Contains(p.Hint, "$SNAPHOP_MAPS_URL") {
+			t.Fatalf("hint = %q", p.Hint)
+		}
+		if out := h.run("credentials", "--url", elsewhere.server.URL).success(t); out["keySource"] != "none" {
+			t.Fatalf("credentials = %v", out)
+		}
+	})
+	t.Run("the environment names no service", func(t *testing.T) {
+		t.Parallel()
+		s := newService(t, never(t))
+		h := newHarness(t, s)
+		delete(h.vars, "SNAPHOP_MAPS_URL")
+		h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_environment"
+		h.run("list-maps", "--url", s.server.URL).failure(t, exitUsage, "API_KEY_REQUIRED")
+	})
+	t.Run("the environment names no valid service", func(t *testing.T) {
+		t.Parallel()
+		s := newService(t, never(t))
+		h := newHarness(t, s)
+		h.vars["SNAPHOP_MAPS_URL"] = "ftp://nowhere"
+		h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_environment"
+		h.run("list-maps", "--url", s.server.URL).failure(t, exitUsage, "API_KEY_REQUIRED")
+	})
+	t.Run("--url names the environment's service", func(t *testing.T) {
+		t.Parallel()
+		s := newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) })
+		h := newHarness(t, s)
+		h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_environment"
+		h.run("list-maps", "--url", s.server.URL+"/").success(t)
+		if r := s.only(); r.Auth != "Bearer shk_environment" {
+			t.Fatalf("Authorization = %q", r.Auth)
+		}
+	})
+	t.Run("the key kept for the other service is sent instead", func(t *testing.T) {
+		t.Parallel()
+		home := newService(t, never(t))
+		elsewhere := newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) })
+		h := newHarness(t, home)
+		h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_environment"
+		if err := h.store().Put(elsewhere.server.URL, credentials.Account{APIKey: "shk_kept_elsewhere"}); err != nil {
+			t.Fatal(err)
+		}
+		h.run("list-maps", "--url", elsewhere.server.URL).success(t)
+		if r := elsewhere.only(); r.Auth != "Bearer shk_kept_elsewhere" {
+			t.Fatalf("Authorization = %q", r.Auth)
+		}
+	})
+}
+
+// TestNoErrorEchoesAKey covers the ways a key could reach standard error: a mistyped flag that makes
+// it the command's name, a stray argument, and an error body that repeats the request's header.
+func TestNoErrorEchoesAKey(t *testing.T) {
+	t.Parallel()
+	echo := func(r request) answer {
+		return answer{status: 502, body: `{"debug": {"authorization": "` + r.Auth + `", "arguments": ` + r.Raw + `}}`}
+	}
+	cases := []struct {
+		name    string
+		respond func(request) answer
+		env     string
+		kept    string
+		args    []string
+		code    string
+	}{
+		{"a mistyped flag", nil, "shk_environment_key", "", []string{"--apikey", "shk_environment_key", "list-maps"}, "UNKNOWN_COMMAND"},
+		{"a stray argument", nil, "", "", []string{"list-maps", "shk_flag_key", "--api-key", "shk_flag_key"}, "UNEXPECTED_ARGUMENT"},
+		{"a header echoed back", echo, "", "shk_kept_key", []string{"list-maps"}, "HTTP_502"},
+		{"an argument echoed back", echo, "", "", []string{"list-maps", "--args", `{"apiKey": "shk_argument_key"}`}, "HTTP_502"},
+		{"a body after a warning", func(request) answer { return answer{status: 404, body: "shk_kept_key"} }, "", "shk_kept_key", []string{"list-maps"}, "HTTP_404"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			respond := tc.respond
+			if respond == nil {
+				respond = never(t)
+			}
+			h := newHarness(t, newService(t, respond))
+			h.vars["SNAPHOP_MAPS_API_KEY"] = tc.env
+			if tc.kept != "" {
+				h.keep(credentials.Account{APIKey: tc.kept, ExpiresAt: "2026-09-29T00:00:00Z"})
+			}
+			o := h.run(tc.args...)
+			o.failure(t, o.code, tc.code)
+			if strings.Contains(o.stderr, "shk_") || !strings.Contains(o.stderr, "[REDACTED]") {
+				t.Fatalf("stderr = %s", o.stderr)
+			}
+		})
+	}
+}
+
+func TestAShortValueIsNotTakenForAKey(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, newService(t, func(request) answer { return answer{status: 404, body: "Check the key"} }))
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "key"
+	if p := h.run("list-maps").failure(t, exitTransport, "HTTP_404"); !strings.Contains(p.Message, "Check the key") {
+		t.Fatalf("error = %+v", p)
 	}
 }
