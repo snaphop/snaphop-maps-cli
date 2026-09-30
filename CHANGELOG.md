@@ -5,7 +5,12 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.2.1 — 2026-09-30
+
 ### Security
+
+Advisory [GHSA-4phv-xxcc-m8m6](https://github.com/snaphop/snaphop-maps-cli/security/advisories/GHSA-4phv-xxcc-m8m6)
+covers the first two. Every version up to 0.2.0 is affected; upgrade to 0.2.1.
 
 - **`skill install` no longer writes through links.** A project could plant `.claude/skills/snaphop-maps/SKILL.md`
   as a link to the credentials file, and `skill install --project` then replaced every kept key with the skill.
