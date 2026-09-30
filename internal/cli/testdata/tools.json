@@ -1,0 +1,409 @@
+{
+  "tools" : [ {
+    "name" : "register_agent",
+    "title" : "Open an account",
+    "description" : "Registers this agent: an account with a workspace of its own and one API key that creates, publishes and withdraws maps there. Returns apiKey, shown this once and the account's only credential -- keep it, and pass it to every other tool. Call it once, not per map. The account is deleted, and its maps taken down, after limits.inactivityDays days without a request.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+          "type" : "string",
+          "description" : "The agent's name, shown in the workspace's activity. 1 to 200 characters."
+        },
+        "workspaceName" : {
+          "type" : "string",
+          "description" : "The workspace's name. Defaults to the agent's name."
+        }
+      },
+      "required" : [ "name" ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : false,
+      "destructiveHint" : false,
+      "idempotentHint" : false,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "create_map",
+    "title" : "Create a map",
+    "description" : "Creates a map and, unless publish is false, publishes it. Returns the map's id and, under published, its page link -- the address to give a person -- and embed codes. Without a view, the map opens on all of its markers. If publication is refused, published is null, publicationError says why, and the map is kept as a draft.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        },
+        "name" : {
+          "type" : "string",
+          "description" : "The map's name, 1 to 120 characters of plain text."
+        },
+        "style" : {
+          "type" : "string",
+          "description" : "The basemap style. Defaults to liberty.",
+          "enum" : [ "liberty", "bright", "positron", "dark", "fiord" ]
+        },
+        "markers" : {
+          "type" : "array",
+          "maxItems" : 500,
+          "description" : "The map's markers, in order.",
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "position" : {
+                "type" : "array",
+                "description" : "Where the marker is, as [longitude, latitude]: longitude first.",
+                "items" : {
+                  "type" : "number"
+                },
+                "minItems" : 2,
+                "maxItems" : 2
+              },
+              "title" : {
+                "type" : "string",
+                "description" : "1 to 120 characters of plain text."
+              },
+              "description" : {
+                "type" : "string",
+                "description" : "At most 1000 characters of plain text; line breaks allowed."
+              },
+              "color" : {
+                "type" : "string",
+                "description" : "#rrggbb. Defaults to #245b47.",
+                "pattern" : "^#[0-9a-fA-F]{6}$"
+              }
+            },
+            "required" : [ "position", "title" ],
+            "additionalProperties" : false
+          }
+        },
+        "view" : {
+          "type" : "object",
+          "description" : "The opening view and zoom limits. Leave it out to open on the markers.",
+          "properties" : {
+            "center" : {
+              "type" : "array",
+              "description" : "The opening centre, as [longitude, latitude]: longitude first.",
+              "items" : {
+                "type" : "number"
+              },
+              "minItems" : 2,
+              "maxItems" : 2
+            },
+            "zoom" : {
+              "type" : "number",
+              "minimum" : 0,
+              "maximum" : 22.0,
+              "description" : "The opening zoom"
+            },
+            "minZoom" : {
+              "type" : "number",
+              "minimum" : 0,
+              "maximum" : 22.0,
+              "description" : "The furthest out a viewer may zoom. Defaults to 0."
+            },
+            "maxZoom" : {
+              "type" : "number",
+              "minimum" : 0,
+              "maximum" : 22.0,
+              "description" : "The furthest in a viewer may zoom. Defaults to 20."
+            },
+            "bounds" : {
+              "type" : [ "array", "null" ],
+              "description" : "[west, south, east, north] a viewer may not pan beyond, holding the centre and every marker.",
+              "items" : {
+                "type" : "number"
+              },
+              "minItems" : 4,
+              "maxItems" : 4
+            }
+          },
+          "required" : [ "center", "zoom" ],
+          "additionalProperties" : false
+        },
+        "controls" : {
+          "type" : "object",
+          "properties" : {
+            "navigation" : {
+              "type" : "boolean",
+              "description" : "Zoom and compass buttons. Defaults to true."
+            },
+            "scale" : {
+              "type" : "boolean",
+              "description" : "A scale bar. Defaults to true."
+            },
+            "cooperativeGestures" : {
+              "type" : "boolean",
+              "description" : "Require two fingers or a modifier key to move the map. Defaults to false."
+            }
+          },
+          "additionalProperties" : false
+        },
+        "publish" : {
+          "type" : "boolean",
+          "description" : "Publish the map once created. Defaults to true."
+        }
+      },
+      "required" : [ "name" ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : false,
+      "destructiveHint" : false,
+      "idempotentHint" : false,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "list_maps",
+    "title" : "List maps",
+    "description" : "Lists the workspace's maps: each one's id, name, active release, whether its draft has unpublished changes, and its marker count.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        }
+      },
+      "required" : [ ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : true,
+      "destructiveHint" : false,
+      "idempotentHint" : true,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "get_map",
+    "title" : "Read a map",
+    "description" : "Returns one map: its draft definition, draft version, and, once published, its page link and embed codes.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        },
+        "id" : {
+          "type" : "string",
+          "description" : "The map's id, as create_map or list_maps returned it."
+        }
+      },
+      "required" : [ "id" ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : true,
+      "destructiveHint" : false,
+      "idempotentHint" : true,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "update_map",
+    "title" : "Change a map",
+    "description" : "Replaces the fields given -- name, style, view, controls or the whole list of markers -- in the map's draft, keeps the rest, and unless publish is false publishes it. New markers without a new view get a view that shows them. Every embed and the page link show the new release within about a minute.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        },
+        "id" : {
+          "type" : "string",
+          "description" : "The map's id, as create_map or list_maps returned it."
+        },
+        "name" : {
+          "type" : "string",
+          "description" : "The map's name, 1 to 120 characters of plain text."
+        },
+        "style" : {
+          "type" : "string",
+          "description" : "The basemap style. Defaults to liberty.",
+          "enum" : [ "liberty", "bright", "positron", "dark", "fiord" ]
+        },
+        "markers" : {
+          "type" : "array",
+          "maxItems" : 500,
+          "description" : "The map's markers, in order.",
+          "items" : {
+            "type" : "object",
+            "properties" : {
+              "position" : {
+                "type" : "array",
+                "description" : "Where the marker is, as [longitude, latitude]: longitude first.",
+                "items" : {
+                  "type" : "number"
+                },
+                "minItems" : 2,
+                "maxItems" : 2
+              },
+              "title" : {
+                "type" : "string",
+                "description" : "1 to 120 characters of plain text."
+              },
+              "description" : {
+                "type" : "string",
+                "description" : "At most 1000 characters of plain text; line breaks allowed."
+              },
+              "color" : {
+                "type" : "string",
+                "description" : "#rrggbb. Defaults to #245b47.",
+                "pattern" : "^#[0-9a-fA-F]{6}$"
+              }
+            },
+            "required" : [ "position", "title" ],
+            "additionalProperties" : false
+          }
+        },
+        "view" : {
+          "type" : "object",
+          "description" : "The opening view and zoom limits. Leave it out to open on the markers.",
+          "properties" : {
+            "center" : {
+              "type" : "array",
+              "description" : "The opening centre, as [longitude, latitude]: longitude first.",
+              "items" : {
+                "type" : "number"
+              },
+              "minItems" : 2,
+              "maxItems" : 2
+            },
+            "zoom" : {
+              "type" : "number",
+              "minimum" : 0,
+              "maximum" : 22.0,
+              "description" : "The opening zoom"
+            },
+            "minZoom" : {
+              "type" : "number",
+              "minimum" : 0,
+              "maximum" : 22.0,
+              "description" : "The furthest out a viewer may zoom. Defaults to 0."
+            },
+            "maxZoom" : {
+              "type" : "number",
+              "minimum" : 0,
+              "maximum" : 22.0,
+              "description" : "The furthest in a viewer may zoom. Defaults to 20."
+            },
+            "bounds" : {
+              "type" : [ "array", "null" ],
+              "description" : "[west, south, east, north] a viewer may not pan beyond, holding the centre and every marker.",
+              "items" : {
+                "type" : "number"
+              },
+              "minItems" : 4,
+              "maxItems" : 4
+            }
+          },
+          "required" : [ "center", "zoom" ],
+          "additionalProperties" : false
+        },
+        "controls" : {
+          "type" : "object",
+          "properties" : {
+            "navigation" : {
+              "type" : "boolean",
+              "description" : "Zoom and compass buttons. Defaults to true."
+            },
+            "scale" : {
+              "type" : "boolean",
+              "description" : "A scale bar. Defaults to true."
+            },
+            "cooperativeGestures" : {
+              "type" : "boolean",
+              "description" : "Require two fingers or a modifier key to move the map. Defaults to false."
+            }
+          },
+          "additionalProperties" : false
+        },
+        "publish" : {
+          "type" : "boolean",
+          "description" : "Publish the change. Defaults to true."
+        }
+      },
+      "required" : [ "id" ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : false,
+      "destructiveHint" : false,
+      "idempotentHint" : false,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "publish_map",
+    "title" : "Publish a map",
+    "description" : "Publishes the map's current draft as its next release. Every embed and the page link show it within about a minute.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        },
+        "id" : {
+          "type" : "string",
+          "description" : "The map's id, as create_map or list_maps returned it."
+        }
+      },
+      "required" : [ "id" ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : false,
+      "destructiveHint" : false,
+      "idempotentHint" : false,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "withdraw_map",
+    "title" : "Withdraw a map",
+    "description" : "Takes a map down for good: its page link and every embed stop showing it, and it leaves the workspace. It cannot be undone.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        },
+        "id" : {
+          "type" : "string",
+          "description" : "The map's id, as create_map or list_maps returned it."
+        }
+      },
+      "required" : [ "id" ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : false,
+      "destructiveHint" : true,
+      "idempotentHint" : false,
+      "openWorldHint" : false
+    }
+  }, {
+    "name" : "replace_key",
+    "title" : "Replace the API key",
+    "description" : "Issues a new API key with the same scopes and a new expiry. Call it before the key expires: the account has no password and no other way back in. Returns the new apiKey, shown this once. The key given keeps working until the new one is first used, which stops it, so if this answer is lost, call it again with the same key.",
+    "inputSchema" : {
+      "type" : "object",
+      "properties" : {
+        "apiKey" : {
+          "type" : "string",
+          "description" : "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+        }
+      },
+      "required" : [ ],
+      "additionalProperties" : false
+    },
+    "annotations" : {
+      "readOnlyHint" : false,
+      "destructiveHint" : false,
+      "idempotentHint" : false,
+      "openWorldHint" : false
+    }
+  } ]
+}

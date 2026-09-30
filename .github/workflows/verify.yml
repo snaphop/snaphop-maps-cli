@@ -1,0 +1,76 @@
+name: Verify
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+
+# One run per pull request or commit; a newer push to a pull request cancels the run it replaces,
+# while every commit on main is verified to the end.
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# This repository is public, so pull requests from forks run here: only on GitHub-hosted runners,
+# with a read-only token and no secrets. Never move these jobs to a self-hosted runner.
+jobs:
+  check:
+    name: Format, vet, race tests and 100% coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with: {go-version-file: go.mod, cache: true}
+      - run: make check
+      - name: Dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  test:
+    name: Tests on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with: {go-version-file: go.mod, cache: true}
+      - run: go test -race -shuffle=on ./...
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with: {go-version-file: go.mod, cache: true}
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          suffix=""
+          if [ "$GOOS" = windows ]; then suffix=.exe; fi
+          make "dist/snaphop-maps-$GOOS-$GOARCH$suffix"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: snaphop-maps-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/snaphop-maps-*
+          retention-days: 7
