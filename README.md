@@ -30,8 +30,16 @@ program described as JSON), `version` and `help`.
 go install github.com/snaphop/snaphop-maps-cli/cmd/snaphop-maps@latest
 ```
 
-Or build every platform's binary at once with `make -j dist`. The binaries go in `dist/`, next to their
-`SHA256SUMS`.
+Or download a binary from [Releases](https://github.com/snaphop/snaphop-maps-cli/releases). The Release
+workflow builds each one from the tagged commit and attests its provenance, so you can verify one before running
+it:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify snaphop-maps-linux-amd64 --repo snaphop/snaphop-maps-cli
+```
+
+To build every platform yourself, run `make -j dist`. The binaries go in `dist/`, next to their `SHA256SUMS`.
 
 ## Use
 
@@ -108,7 +116,8 @@ clear. The CLI follows no redirects.
 
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
-and runs `govulncheck`. See [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
+and runs `govulncheck`. To release, add the version's section to `CHANGELOG.md` and push the tag `vX.Y.Z`; the
+Release workflow does the rest (ADR 0002). See [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
 
 ## License
 

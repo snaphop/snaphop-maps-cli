@@ -43,8 +43,8 @@ fail the call.
   refused field.
 - **Automatic retries.** Repeating `create_map` can make two maps, and repeating `publish_map` adds a release, so
   the CLI never retries by itself. Instead, each error says whether a repeat is safe.
-- **Publishing releases.** Binaries are built by CI and kept as workflow artifacts. Distribution beyond
-  `go install` is an operator decision.
+- **Publishing releases.** Superseded by [0002](0002-release-from-a-tag-with-provenance.md): a pushed tag publishes
+  the release from CI.
 
 ## Consequences
 

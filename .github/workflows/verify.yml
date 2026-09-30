@@ -69,7 +69,7 @@ jobs:
           suffix=""
           if [ "$GOOS" = windows ]; then suffix=.exe; fi
           make "dist/snaphop-maps-$GOOS-$GOARCH$suffix"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: snaphop-maps-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/snaphop-maps-*

@@ -1,0 +1,111 @@
+name: Release
+# Push a tag vMAJOR.MINOR.PATCH on main. The release is published only when the tag and a CHANGELOG
+# section agree and every check passes: each platform is built in its own job, concurrently, from the
+# tagged commit, and every binary gets a signed build provenance attestation.
+#
+# Run it by hand with a tag to rehearse that release from main: everything but the attestation and
+# the release itself, which only a pushed tag publishes.
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The vMAJOR.MINOR.PATCH to rehearse, from main. Nothing is published.
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release
+  cancel-in-progress: false
+env:
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
+# This repository is public: GitHub-hosted runners only, and write permissions only in the one job
+# that publishes, which runs only for a pushed tag.
+jobs:
+  check:
+    name: Tag, changelog and every check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with: {go-version-file: go.mod, cache: true}
+      - name: The tag and the changelog agree, and the commit is on main
+        run: |
+          scripts/release-check.sh "$TAG"
+          scripts/release-notes.sh "$TAG" > /dev/null
+      - name: Format, vet, race tests and 100% coverage
+        run: make check
+      - name: Dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: check
+    strategy:
+      fail-fast: true
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with: {go-version-file: go.mod, cache: false}
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          suffix=""
+          if [ "$GOOS" = windows ]; then suffix=.exe; fi
+          make "dist/snaphop-maps-$GOOS-$GOARCH$suffix" VERSION="$TAG"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snaphop-maps-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/snaphop-maps-*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Attest and publish
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: snaphop-maps-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: |
+          test "$(ls dist | wc -l)" -eq 6
+          cd dist && sha256sum snaphop-maps-* > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/snaphop-maps-*
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/release-notes.sh "$TAG" > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" --verify-tag --title "SnapHop Maps CLI ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" \
+            dist/snaphop-maps-* dist/SHA256SUMS

@@ -31,6 +31,8 @@ observe its arguments and output.
 - The module MUST depend on the Go standard library alone. A new dependency needs an ADR and review.
 - CI runs untrusted pull requests from forks. It MUST use GitHub-hosted runners, a read-only token and no secrets,
   and MUST NOT use `pull_request_target`.
+- Release binaries MUST be built and published only by the Release workflow, from a tag on `main`, with a build
+  provenance attestation for each. Only its publishing job may hold write permissions.
 - Tests MUST NOT reach production. Registering agents or publishing maps on production is not a verification step.
 
 `--api-key` is visible to other processes on the same machine. Prefer `$SNAPHOP_MAPS_API_KEY` or the credentials
