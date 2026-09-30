@@ -1,0 +1,3 @@
+# LF everywhere, Windows checkouts included: the binary embeds the Agent Skill, and its tests read
+# it byte for byte, so it must not depend on the platform that checked it out.
+* text=auto eol=lf
