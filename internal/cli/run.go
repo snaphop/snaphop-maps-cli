@@ -43,6 +43,9 @@ type Env struct {
 	Stderr    io.Writer
 	Getenv    func(string) string
 	ConfigDir func() (string, error)
+	HomeDir   func() (string, error)
+	// Dir is the working directory relative paths are read against; empty means the process's.
+	Dir string
 	// HTTP sends requests; nil means a client that follows no redirects.
 	HTTP    *http.Client
 	Now     func() time.Time

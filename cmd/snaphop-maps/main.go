@@ -28,6 +28,7 @@ func main() {
 		Stderr:    os.Stderr,
 		Getenv:    os.Getenv,
 		ConfigDir: os.UserConfigDir,
+		HomeDir:   os.UserHomeDir,
 		Now:       time.Now,
 		Version:   cli.Version(version, debug.ReadBuildInfo),
 	})

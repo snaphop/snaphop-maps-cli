@@ -1,7 +1,8 @@
 name: Release
 # Push a tag vMAJOR.MINOR.PATCH on main. The release is published only when the tag and a CHANGELOG
 # section agree and every check passes: each platform is built in its own job, concurrently, from the
-# tagged commit, and every binary gets a signed build provenance attestation.
+# tagged commit, the Agent Skill is packed beside them, and every file gets a signed build provenance
+# attestation.
 #
 # Run it by hand with a tag to rehearse that release from main: everything but the attestation and
 # the release itself, which only a pushed tag publishes.
@@ -76,9 +77,28 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  skill:
+    name: Pack the Agent Skill
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with: {go-version-file: go.mod, cache: false}
+      - run: make dist/snaphop-maps-skill.zip
+      - uses: actions/upload-artifact@v7
+        with:
+          name: snaphop-maps-skill
+          path: dist/snaphop-maps-skill.zip
+          if-no-files-found: error
+          retention-days: 7
+
   publish:
     name: Attest and publish
-    needs: build
+    needs: [build, skill]
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -97,7 +117,7 @@ jobs:
           merge-multiple: true
       - name: Checksums
         run: |
-          test "$(ls dist | wc -l)" -eq 6
+          test "$(ls dist | wc -l)" -eq 7
           cd dist && sha256sum snaphop-maps-* > SHA256SUMS && cat SHA256SUMS
       - uses: actions/attest-build-provenance@v4
         with:

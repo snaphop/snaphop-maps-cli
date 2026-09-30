@@ -30,4 +30,8 @@ tagged commit and carries a signed build provenance attestation. Verify one befo
 sha256sum -c SHA256SUMS --ignore-missing
 gh attestation verify snaphop-maps-linux-amd64 --repo snaphop/snaphop-maps-cli
 \`\`\`
+
+\`snaphop-maps-skill.zip\` is the Agent Skill that teaches an AI assistant to use the CLI. Upload it to claude.ai,
+ChatGPT or a model API. With the CLI installed, \`snaphop-maps skill install --client claude|codex|gemini|grok|cursor\`
+puts it where a local assistant looks.
 NOTES

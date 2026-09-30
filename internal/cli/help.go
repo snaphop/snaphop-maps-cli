@@ -102,6 +102,7 @@ func runSchema(inv *invocation) int {
 		"globalFlags":     globalFlags,
 		"environment":     environment,
 		"exitStatuses":    exitStatuses,
+		"skillClients":    skillClients,
 		"output": map[string]string{
 			"stdout":  "On success, one JSON document: the tool's structured result, exactly as the service gave it.",
 			"stderr":  `On failure, {"error": {"code", "message", "hint", ...}}; a warning is {"warning": {...}}. One JSON document per line.`,

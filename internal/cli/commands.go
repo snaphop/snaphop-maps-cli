@@ -79,7 +79,7 @@ func definitionFlags(nameRequired bool) []flagSpec {
 		{Name: "markers", Argument: "markers", Kind: kindJSON,
 			Description: `The whole list of markers as a JSON array, inline, @file or -. Each is {"position": [longitude, latitude], "title": "1 to 120 characters", "description": "at most 1000 characters", "color": "#rrggbb"}; position and title are required. Longitude comes first. Text is plain, never HTML or Markdown.`},
 		{Name: "view", Argument: "view", Kind: kindJSON,
-			Description: `The opening view as a JSON object: {"center": [longitude, latitude], "zoom": 0-20, "minZoom", "maxZoom", "bounds": [west, south, east, north]}. Leave it out to open on the markers.`},
+			Description: `The opening view as a JSON object: {"center": [longitude, latitude], "zoom": 0-22, "minZoom", "maxZoom", "bounds": [west, south, east, north]}. Leave it out to open on the markers.`},
 		{Name: "controls", Argument: "controls", Kind: kindJSON,
 			Description: `The viewer's controls as a JSON object: {"navigation": true, "scale": true, "cooperativeGestures": false}.`},
 	}
@@ -175,6 +175,27 @@ func commands() []*command {
 			Flags:   []flagSpec{argsFlag, yesFlag, noSaveFlag, overwriteFlag},
 			Example: `snaphop-maps call get_map --args '{"id": "MAP_ID"}'`,
 			run:     runCall,
+		},
+		{
+			Name: "skill", Positional: "action",
+			Summary: "The Agent Skill for this CLI: print, install or pack it",
+			Description: "Without an action, prints the Agent Skill (SKILL.md) that teaches an AI agent to use this CLI. " +
+				"`skill install --client NAME` copies it where that client looks for skills: claude (Claude Code), codex " +
+				"(OpenAI Codex), gemini (Gemini CLI), grok (Grok Build), cursor (Cursor), or agents (the shared " +
+				".agents/skills directory). It goes under the home directory, or under --project for one project, and " +
+				"replaces any copy already there. `skill pack` writes the skill as a zip to upload to claude.ai, ChatGPT " +
+				"or a model API.",
+			Flags: []flagSpec{
+				{Name: "client", Kind: kindString,
+					Description: "For install: claude, codex, gemini, grok, cursor or agents."},
+				{Name: "project", Kind: kindString,
+					Description: "For install: a project directory to install into instead of the home directory."},
+				{Name: "output", Kind: kindString,
+					Description: "For pack: the zip file to write. Defaults to " + defaultSkillZip + "."},
+			},
+			ReadOnly: true,
+			Example:  "snaphop-maps skill install --client claude",
+			run:      runSkill,
 		},
 		{
 			Name: "tools", ReadOnly: true,

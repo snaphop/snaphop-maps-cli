@@ -1,7 +1,8 @@
-# snaphop-maps
+# SnapHop Maps CLI
 
-SnapHop Maps from the command line, built for AI agents. `snaphop-maps` publishes interactive web maps with
-plain-text markers at a stable link and as embeddable HTML, through [SnapHop Maps](https://maps.snaphop.ai).
+SnapHop Maps from the command line, built for AI agents. The SnapHop Maps CLI, `snaphop-maps`, publishes interactive
+web maps with plain-text markers at a stable link and as embeddable HTML, through
+[SnapHop Maps](https://maps.snaphop.ai).
 
 It is one static executable with no dependencies. Each command calls one tool of the service's MCP server, so the
 CLI offers exactly what the MCP server offers:
@@ -21,8 +22,8 @@ CLI offers exactly what the MCP server offers:
 | `guide`          | `initialize`     | The service's own instructions for agents, with this installation's limits |
 | `ping`           | `ping`           | Check that the service answers                                      |
 
-Local commands: `credentials` (which key would be sent and from where, never the key itself), `schema` (this
-program described as JSON), `version` and `help`.
+Local commands: `credentials` (which key would be sent and from where, never the key itself), `skill` (the Agent
+Skill for this CLI: print, install or pack it), `schema` (this program described as JSON), `version` and `help`.
 
 ## Install
 
@@ -72,6 +73,28 @@ snaphop-maps get-map MAP_ID | jq '.draft' > draft.json
 snaphop-maps create-map --args @draft.json
 ```
 
+## Skills for AI assistants
+
+[`skills/snaphop-maps/SKILL.md`](skills/snaphop-maps/SKILL.md) is an [Agent Skill](https://agentskills.io). It
+teaches an assistant when to reach for SnapHop Maps and how to use this CLI well: coordinates longitude first,
+confirming before a withdrawal, keeping the key secret, and what each error means. Claude, ChatGPT and Codex, Gemini,
+Grok, Cursor and the other clients that follow the standard all read the same file. The binary carries it too, so
+the skill always matches the version you run:
+
+| Assistant                     | Install                                                   | Where it goes                   |
+| ----------------------------- | --------------------------------------------------------- | ------------------------------- |
+| Claude Code                   | `snaphop-maps skill install --client claude`              | `~/.claude/skills/snaphop-maps` |
+| OpenAI Codex                  | `snaphop-maps skill install --client codex`               | `~/.agents/skills/snaphop-maps` |
+| Gemini CLI                    | `snaphop-maps skill install --client gemini`              | `~/.gemini/skills/snaphop-maps` |
+| Grok Build                    | `snaphop-maps skill install --client grok`                | `~/.grok/skills/snaphop-maps`   |
+| Cursor                        | `snaphop-maps skill install --client cursor`              | `~/.cursor/skills/snaphop-maps` |
+| Any client reading `.agents/skills` | `snaphop-maps skill install --client agents`        | `~/.agents/skills/snaphop-maps` |
+| claude.ai, ChatGPT, model APIs | Upload the zip from `snaphop-maps skill pack` (attached to each release from the next one on) | — |
+
+Add `--project DIR` to install the skill into one project instead of your home directory. `snaphop-maps skill`
+prints it, which an assistant can read to learn the CLI in one step. A skill needs a client that can run the binary.
+An assistant without a shell can use the same service as an MCP server at `https://maps.snaphop.ai/mcp`.
+
 ## Output and exit statuses
 
 On success, standard output holds one JSON document: the tool's structured result, exactly as the service returned
@@ -117,7 +140,7 @@ clear. The CLI follows no redirects.
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
 and runs `govulncheck`. To release, add the version's section to `CHANGELOG.md` and push the tag `vX.Y.Z`; the
-Release workflow does the rest (ADR 0002). See [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
+Release workflow does the rest (ADR 0002). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
 
 ## License
 

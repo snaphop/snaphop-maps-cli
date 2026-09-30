@@ -122,6 +122,7 @@ type harness struct {
 	vars      map[string]string
 	stdin     io.Reader
 	configDir func() (string, error)
+	homeDir   func() (string, error)
 	http      *http.Client
 }
 
@@ -133,6 +134,7 @@ func newHarness(t *testing.T, s *service) *harness {
 		h.vars["SNAPHOP_MAPS_URL"] = s.server.URL
 	}
 	h.configDir = func() (string, error) { return filepath.Join(dir, "config"), nil }
+	h.homeDir = func() (string, error) { return filepath.Join(dir, "home"), nil }
 	return h
 }
 
@@ -152,6 +154,8 @@ func (h *harness) run(args ...string) outcome {
 		Stderr:    &stderr,
 		Getenv:    func(name string) string { return h.vars[name] },
 		ConfigDir: h.configDir,
+		HomeDir:   h.homeDir,
+		Dir:       h.dir,
 		HTTP:      h.http,
 		Now:       func() time.Time { return now },
 		Version:   "1.2.3",

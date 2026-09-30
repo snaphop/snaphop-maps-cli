@@ -1,8 +1,8 @@
 # AGENTS.md
 
-This repository builds `snaphop-maps`, the command line for SnapHop Maps. It is designed for AI agents first, and
+This repository builds the SnapHop Maps CLI, `snaphop-maps`. It is designed for AI agents first, and
 it is written in Go as a single static executable that depends on nothing outside the standard library. Read
-`README.md` for what it does and `SECURITY.md` before changing how keys are found, kept or sent. Record material
+`README.md` for what it does, `CONTRIBUTING.md` for how to change it, and `SECURITY.md` before changing how keys are found, kept or sent. Record material
 decisions in `docs/decisions/` and observable changes in `CHANGELOG.md`.
 
 Core invariants:
@@ -24,6 +24,10 @@ Core invariants:
   is refused except to loopback, and redirects are never followed. The credentials file is `0600`, written whole
   and renamed into place. No command may lose a kept key: `register-agent` needs `--overwrite` to replace an
   account, and `replace-key` replaces only the key it was called with.
+- **The skill is part of the interface.** `skills/snaphop-maps/SKILL.md` is the Agent Skill every assistant reads
+  (ADR 0003), and the binary embeds it. Change it in the same change as any command, flag, error or behaviour an
+  agent relies on. Its tests check the specification's frontmatter, check that it shows every command, and run every
+  example in its code blocks.
 - **Nothing outside the standard library.** Adding a module dependency needs an ADR.
 
 Run `make check` before handoff. It runs `gofmt`, `go vet`, the build, and every test under the race detector in

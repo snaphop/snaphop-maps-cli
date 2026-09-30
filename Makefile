@@ -28,8 +28,13 @@ fmt:
 
 check: lint build coverage
 
-dist: $(BINARIES)
+dist: $(BINARIES) dist/snaphop-maps-skill.zip
 	cd dist && sha256sum snaphop-maps-* > SHA256SUMS
+
+# The Agent Skill as a zip to upload, packed by the CLI itself (ADR 0003).
+dist/snaphop-maps-skill.zip:
+	@mkdir -p dist
+	go run ./cmd/snaphop-maps skill pack --output $@
 
 dist/snaphop-maps-%:
 	@mkdir -p dist

@@ -28,6 +28,9 @@ observe its arguments and output.
 - Only the answer that issued a key may print it. `credentials`, errors, warnings and hints MUST NOT contain a key.
 - The CLI MUST NOT execute anything the service returns or render it as markup. Its output is JSON, and map text
   stays plain text.
+- `skill install` MUST write only the skill's own files, in the skill's own directory under the chosen client's
+  skills directory. The skill MUST NOT tell an assistant to reveal, log or pass on the API key, or to withdraw a
+  map without the user's agreement.
 - The module MUST depend on the Go standard library alone. A new dependency needs an ADR and review.
 - CI runs untrusted pull requests from forks. It MUST use GitHub-hosted runners, a read-only token and no secrets,
   and MUST NOT use `pull_request_target`.
