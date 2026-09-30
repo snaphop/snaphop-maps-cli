@@ -109,3 +109,7 @@ clear. The CLI follows no redirects.
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
 and runs `govulncheck`. See [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
+
+## License
+
+[MIT](LICENSE).
