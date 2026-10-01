@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.3.1 — 2026-10-01
+
 ### Fixed
 
 - **Commands keeping keys at once on macOS no longer refuse for no reason.** macOS can answer that the credentials
