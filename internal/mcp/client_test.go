@@ -144,9 +144,31 @@ func TestFailuresOfTheExchange(t *testing.T) {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`),
 			code:   "JSONRPC_-32601", message: "Method not found", status: 200, known: true,
 		},
+		"json-rpc invalid params": {
+			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"Invalid params"}}`),
+			code:   "JSONRPC_-32602", message: "Invalid params", status: 200, known: true,
+		},
 		"json-rpc internal error": {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"Internal error"}}`),
 			code:   "JSONRPC_-32603", message: "Internal error", status: 200, known: false,
+		},
+		// A server-defined error may come after a method has done part of its work.
+		"json-rpc server error": {
+			client: answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"Publication failed"}}`),
+			code:   "JSONRPC_-32001", message: "Publication failed", status: 200, known: false,
+		},
+		// Accepted is not refused: the request may be carried out after the answer.
+		"accepted": {
+			client: answering(202, nil, ""),
+			code:   "HTTP_202", message: "Accepted", status: 202, known: false,
+		},
+		"redirect": {
+			client: answering(307, nil, ""),
+			code:   "HTTP_307", message: "Temporary Redirect", status: 307, known: true,
+		},
+		"events without this reply": {
+			client: answering(200, http.Header{"Content-Type": {"text/event-stream"}}, "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}\n\n"),
+			code:   "INVALID_RESPONSE", message: "event: message", status: 200, known: false,
 		},
 		"another request's reply": {
 			client: answering(200, nil, `{"jsonrpc":"2.0","id":2,"result":{}}`),
@@ -210,6 +232,50 @@ func TestFailuresOfTheExchange(t *testing.T) {
 				t.Fatalf("Error() = %q", err.Error())
 			}
 		})
+	}
+}
+
+func TestCallReadsTheReplyAmongServerSentEvents(t *testing.T) {
+	t.Parallel()
+	body := ": a comment\r\n\r\nevent: message\r\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\"}\r\n\r\n" +
+		"event: message\r\ndata: {\"jsonrpc\":\"2.0\",\r\ndata: \"id\":1,\"result\":{\"structuredContent\":{\"maps\":[]}}}\r\n\r\n"
+	client := answering(200, http.Header{"Content-Type": {"Text/Event-Stream; charset=utf-8"}}, body)
+	result, err := client.CallTool(context.Background(), "list_maps", nil, "k")
+	if err != nil || string(result.Structured) != `{"maps":[]}` {
+		t.Fatalf("CallTool = %s, %v", result.Structured, err)
+	}
+}
+
+// TestASecretIsRedactedBeforeTheBodyIsCut is a key that an error body echoes where the excerpt ends:
+// cut first, only part of it would be left, and no later redaction could recognise it.
+func TestASecretIsRedactedBeforeTheBodyIsCut(t *testing.T) {
+	t.Parallel()
+	key := "sh_agent_" + strings.Repeat("A", 43)
+	client := answering(502, nil, strings.Repeat("x", 180)+" "+key+" and more")
+	client.Redact = func(text string) string { return strings.ReplaceAll(text, key, "[REDACTED]") }
+	_, err := client.Call(context.Background(), "ping", nil, key)
+	if err == nil || strings.Contains(err.Message, "sh_agent_AAAA") || !strings.Contains(err.Message, "[REDACTED]") {
+		t.Fatalf("error = %+v", err)
+	}
+}
+
+func TestATimeoutWhileTheAnswerArrivesIsATimeout(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		io.WriteString(w, "{")
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	client := &Client{Endpoint: server.URL + "/mcp", HTTP: server.Client()}
+	_, err := client.Call(ctx, "ping", nil, "")
+	if err == nil || err.Code != "TIMEOUT" || err.Status != 200 || err.OutcomeKnown() {
+		t.Fatalf("error = %+v", err)
 	}
 }
 

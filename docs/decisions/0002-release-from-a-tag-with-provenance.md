@@ -31,4 +31,10 @@ already publishes its releases from a tag, with a workflow (its ADR 0003).
 
 - Cutting a release is: add the version's changelog section on `main`, then push the tag. The workflow refuses
   anything else.
+- The workflow that runs for a tag is the one in the tagged commit, so its check that the commit is on `main` is
+  only as strong as the rule on who may push `v*` tags. That rule is a repository ruleset: only maintainers may
+  create, move or delete a `v*` tag. Provenance records the tag and commit a binary was built from, not the branch;
+  `git merge-base --is-ancestor <commit> origin/main` shows the commit is on `main`.
+- Each tag's run waits for an earlier run of the same tag, and runs of different tags do not cancel each other.
+  Publishing refuses a tag that was moved to another commit while its run built.
 - The umbrella stack keeps pinning whichever commit it has reviewed. A release does not move that pointer.

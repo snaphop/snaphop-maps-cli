@@ -5,6 +5,58 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Security
+
+- **A new key is kept before it is printed** (ADR 0005). `register-agent` printed the key first, so a reader of
+  standard output that stopped early, such as `register-agent | head`, ended the process before it kept anything,
+  and the account's only key was lost. SIGPIPE is now ignored, and an answer standard output cannot take is
+  reported as `OUTPUT_FAILED` with the new exit status 7, whose hint says whether the key is kept.
+- **A key is only issued when it can be kept.** `register-agent` and `replace-key` now rewrite the credentials file
+  under its lock before sending anything, and refuse with `CREDENTIALS_UNWRITABLE` when they cannot, instead of
+  registering and then failing to keep the key.
+- **A replaced `$SNAPHOP_MAPS_API_KEY` is no longer sent.** After `replace-key`, the environment's old key went on
+  being sent and the kept new one never was; when the old one expired, the advice to register again with
+  `--overwrite` replaced the new one. The file now keeps the replaced key's digest, a command sends the kept key
+  in its place with the warning `ENVIRONMENT_KEY_REPLACED`, and a refused key never leads to that advice while
+  another key is kept.
+- **No part of a key reaches standard error.** An error body is redacted before it is cut to 200 characters, which
+  could leave the start of a key; anything shaped like a SnapHop key (`sh_agent_…`) is redacted, including one
+  typed where the command's name goes; and an unknown flag before the command is refused by its name alone.
+- **The credentials lock is opened inside its directory, and waited for at most 10 seconds.** A link at
+  `credentials.json.lock` that led elsewhere was followed, and a stuck lock hung a command for good.
+- **The release is refused when its tag was moved while it built,** and runs for different tags no longer cancel
+  each other. SECURITY.md and ADR 0002 now say that only a ruleset on `v*` tags makes "a tag on `main`" hold.
+
+### Fixed
+
+- A request that may have run is no longer reported as "Nothing was carried out": an HTTP 2xx other than 200, and
+  a JSON-RPC error other than parse, invalid request, unknown method and invalid parameters, are now
+  `outcomeKnown: false`. `call` with a tool this build does not know no longer says "It is safe to repeat."
+- `withdraw-map --id keep-me --yes other` withdrew `other`: an id given both ways is now refused with
+  `CONFLICTING_ARGUMENT`. `--publish false` sent `false` as the map's id: a switch followed by `true` or `false` is
+  now refused, with a hint to write `--publish=false`.
+- A JSON flag followed by a stray `]` or `}` was sent as valid; it is now `INVALID_JSON`. `--args '{"apiKey": null}'`
+  sent no key at all; `apiKey` that is not a key is now refused.
+- `$SNAPHOP_MAPS_API_KEY` was not sent with `--url https://maps.snaphop.ai:443`: a scheme's own port is now dropped
+  from a service address. A key kept under an address with `:443` or `:80` is found under the address without it.
+- `help`, `version`, `schema` and `skill` failed when `$SNAPHOP_MAPS_URL` or `--timeout` was invalid; they no
+  longer read either. `INVALID_URL` names `$SNAPHOP_MAPS_URL` when that is where the address came from.
+- `--pretty` spread errors over several lines; standard error is now always one JSON document per line.
+- A 401 when no key was sent, from `ping`, `tools`, `guide` or `register-agent`, was reported as `API_KEY_INVALID`.
+- `skill install` without `--project` failed when the home skills directory, such as `~/.claude`, is a link a
+  dotfile manager made. Only a project's links are now confined.
+- The skill files and `skill pack`'s zip were always `0644`; they now honour the umask.
+- On Windows, a command replacing the credentials file could fail while another read it. Reads now take the lock.
+- `--credentials`, `$SNAPHOP_MAPS_CREDENTIALS` and `--project` are read relative to the working directory a run
+  is given, as `@file` and `--output` are. A global flag written `--url=…` before the command is now read.
+- The credentials file keeps fields a newer build wrote. `schema` lists no flags as `[]`, not `null`, and says that
+  `call` sends a key and `skill` writes files. `SKILL.md` covers exit statuses 6 and 7, `INPUT_TOO_LARGE`, where
+  the environment's key is sent, and switches.
+- Answers sent as server-sent events are read, and a deadline that passes while an answer arrives is `TIMEOUT`.
+- `make dist` rebuilt nothing once `dist/` held a file; it now rebuilds every file. The coverage floor counted a
+  rounded percentage and passed at 99.95%; it now counts statements. macOS and Windows now run the coverage floor
+  too, and `scripts/ci-local.sh` checks staged changes for whitespace errors.
+
 ## 0.2.1 — 2026-09-30
 
 ### Security

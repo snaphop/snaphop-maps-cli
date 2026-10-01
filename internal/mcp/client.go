@@ -1,6 +1,7 @@
 // Package mcp is a client for SnapHop Maps' MCP server: MCP's Streamable HTTP transport, spoken
 // statelessly with JSON responses, as the server speaks it. Every call is one JSON-RPC request in
-// one POST, answered with one JSON body; there is no session and no server-sent events.
+// one POST, answered with one JSON body; there is no session. An answer the transport allows as
+// server-sent events is read too, for the reply to this request.
 package mcp
 
 import (
@@ -29,6 +30,9 @@ type Client struct {
 	HTTP *http.Client
 	// UserAgent names the client to the server.
 	UserAgent string
+	// Redact, when set, takes secrets out of text from an answer before it is shortened for an error
+	// message, where cutting a secret short would leave part of it for any later redaction to miss.
+	Redact func(string) string
 }
 
 // ToolResult is a tool's answer: the structured content, and whether the tool refused.
@@ -53,18 +57,31 @@ type Error struct {
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
 
 // OutcomeKnown is true when the request was not carried out: it was never sent, or the server
-// refused it with an HTTP error below 500 or a JSON-RPC error. It is false when it may have been
-// carried out unseen: no answer, an answer from a gateway or a failing server, a JSON-RPC internal
-// error, or a successful answer this client could not read.
+// refused it with an HTTP error from 300 to 499, or with a JSON-RPC error that comes before any
+// method runs. It is false when it may have been carried out unseen: no answer, an answer from a
+// gateway or a failing server, any other success status, a JSON-RPC error a method may raise after
+// doing part of its work, or a successful answer this client could not read.
 func (e *Error) OutcomeKnown() bool {
 	switch {
 	case e.Code == "TIMEOUT" || e.Code == "TRANSPORT":
 		return false
+	case e.Status == 0:
+		// Never sent.
+		return true
 	case e.Status == http.StatusOK:
-		return strings.HasPrefix(e.Code, "JSONRPC_") && e.Code != "JSONRPC_-32603"
+		return refusedBeforeRunning[e.Code]
 	default:
-		return e.Status < 500
+		return e.Status >= 300 && e.Status < 500
 	}
+}
+
+// refusedBeforeRunning are the JSON-RPC errors a server raises before any method runs: the request
+// could not be parsed or was not valid, the method does not exist, or its parameters are wrong.
+var refusedBeforeRunning = map[string]bool{
+	"JSONRPC_-32700": true,
+	"JSONRPC_-32600": true,
+	"JSONRPC_-32601": true,
+	"JSONRPC_-32602": true,
 }
 
 type request struct {
@@ -105,24 +122,30 @@ func (c *Client) Call(ctx context.Context, method string, params any, apiKey str
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return nil, &Error{Code: "TIMEOUT", Message: "No answer arrived in time; the request may still have been carried out."}
+			return nil, timedOut(0)
 		}
 		return nil, &Error{Code: "TRANSPORT", Message: err.Error()}
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
 	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return nil, timedOut(resp.StatusCode)
+		}
 		return nil, &Error{Code: "TRANSPORT", Message: "The answer was cut off: " + err.Error(), Status: resp.StatusCode}
 	}
 	if len(data) > MaxResponseBytes {
 		return nil, &Error{Code: "RESPONSE_TOO_LARGE", Message: "The answer exceeded 8 MiB.", Status: resp.StatusCode}
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, httpError(resp, data)
+		return nil, c.httpError(resp, data)
+	}
+	if mediaType(resp) == "text/event-stream" {
+		data = eventFor(data)
 	}
 	var answer reply
 	if err := json.Unmarshal(data, &answer); err != nil || answer.JSONRPC != "2.0" {
-		return nil, &Error{Code: "INVALID_RESPONSE", Message: "The server's answer is not a JSON-RPC reply: " + excerpt(data), Status: resp.StatusCode}
+		return nil, &Error{Code: "INVALID_RESPONSE", Message: "The server's answer is not a JSON-RPC reply: " + c.excerpt(data), Status: resp.StatusCode}
 	}
 	if answer.Error != nil {
 		return nil, &Error{Code: fmt.Sprintf("JSONRPC_%d", answer.Error.Code), Message: answer.Error.Message, Status: resp.StatusCode}
@@ -166,10 +189,40 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 	return ToolResult{Structured: structured, IsError: decoded.IsError}, nil
 }
 
+func timedOut(status int) *Error {
+	return &Error{Code: "TIMEOUT", Message: "No whole answer arrived in time; the request may still have been carried out.", Status: status}
+}
+
+func mediaType(resp *http.Response) string {
+	value, _, _ := strings.Cut(resp.Header.Get("Content-Type"), ";")
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+// eventFor finds the reply to this request among server-sent events: the data of the first event
+// that is a JSON-RPC message with this request's id. Without one, the body is returned as it came.
+func eventFor(data []byte) []byte {
+	for _, event := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n\n") {
+		var lines []string
+		for _, line := range strings.Split(event, "\n") {
+			if value, ok := strings.CutPrefix(line, "data:"); ok {
+				lines = append(lines, strings.TrimPrefix(value, " "))
+			}
+		}
+		message := []byte(strings.Join(lines, "\n"))
+		var probe struct {
+			ID json.RawMessage `json:"id"`
+		}
+		if json.Unmarshal(message, &probe) == nil && string(probe.ID) == "1" {
+			return message
+		}
+	}
+	return data
+}
+
 // httpError describes an answer other than 200: the server's own error body when it sent one,
 // and otherwise the status. An edge's bot challenge is named, since an agent can do nothing about
 // it but report it.
-func httpError(resp *http.Response, data []byte) *Error {
+func (c *Client) httpError(resp *http.Response, data []byte) *Error {
 	failure := &Error{
 		Code:       fmt.Sprintf("HTTP_%d", resp.StatusCode),
 		Message:    http.StatusText(resp.StatusCode),
@@ -190,14 +243,17 @@ func httpError(resp *http.Response, data []byte) *Error {
 		failure.Code = body.Error.Code
 		failure.Message = body.Error.Message
 	case len(bytes.TrimSpace(data)) > 0:
-		failure.Message += ": " + excerpt(data)
+		failure.Message += ": " + c.excerpt(data)
 	}
 	return failure
 }
 
-// excerpt is the start of a body, on one line, for an error message.
-func excerpt(data []byte) string {
+// excerpt is the start of a body, on one line and without secrets, for an error message.
+func (c *Client) excerpt(data []byte) string {
 	text := strings.Join(strings.Fields(string(data)), " ")
+	if c.Redact != nil {
+		text = c.Redact(text)
+	}
 	if len(text) > 200 {
 		text = text[:200]
 		for !utf8.ValidString(text) {

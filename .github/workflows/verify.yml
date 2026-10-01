@@ -30,8 +30,10 @@ jobs:
       - name: Dependency vulnerabilities
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
+  # Race tests and the same coverage floor on the other systems, whose own files, such as the credentials
+  # lock for Windows, only they compile.
   test:
-    name: Tests on ${{ matrix.os }}
+    name: Tests and 100% coverage on ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -44,7 +46,8 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with: {go-version-file: go.mod, cache: true}
-      - run: go test -race -shuffle=on ./...
+      - run: sh scripts/coverage.sh
+        shell: bash
 
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}

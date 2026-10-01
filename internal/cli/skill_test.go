@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -95,6 +97,7 @@ func TestEveryExampleInTheSkillRuns(t *testing.T) {
 	if len(examples) < 8 {
 		t.Fatalf("found only %d examples: %q", len(examples), examples)
 	}
+	schemas := toolSchemas(t)
 	for _, example := range examples {
 		t.Run(strings.Join(example, " "), func(t *testing.T) {
 			t.Parallel()
@@ -111,7 +114,88 @@ func TestEveryExampleInTheSkillRuns(t *testing.T) {
 			if o := h.run(example[1:]...); o.code != exitOK {
 				t.Fatalf("exit %d\nstdout: %s\nstderr: %s", o.code, o.stdout, o.stderr)
 			}
+			// What the example sends is what the tool takes: no misspelt field, no value of the wrong type.
+			for _, r := range s.received() {
+				if schema, known := schemas[r.Tool]; r.Method == "tools/call" && known {
+					conforms(t, r.Tool, schema, any(r.Arguments))
+				}
+			}
 		})
+	}
+}
+
+// toolSchemas are the input schemas of the service's tools, by name.
+func toolSchemas(t *testing.T) map[string]map[string]any {
+	t.Helper()
+	var listed struct {
+		Tools []struct {
+			Name        string         `json:"name"`
+			InputSchema map[string]any `json:"inputSchema"`
+		} `json:"tools"`
+	}
+	data, _ := testdata.ReadFile("testdata/tools.json")
+	if err := json.Unmarshal(data, &listed); err != nil {
+		t.Fatal(err)
+	}
+	schemas := map[string]map[string]any{}
+	for _, tool := range listed.Tools {
+		schemas[tool.Name] = tool.InputSchema
+	}
+	return schemas
+}
+
+// conforms checks a value against the parts of a JSON Schema the service's tools use: type,
+// properties, additionalProperties, required and items.
+func conforms(t *testing.T, path string, schema map[string]any, value any) {
+	t.Helper()
+	types := map[string]bool{}
+	switch declared := schema["type"].(type) {
+	case string:
+		types[declared] = true
+	case []any:
+		for _, name := range declared {
+			types[name.(string)] = true
+		}
+	}
+	kind := map[bool]string{true: "integer", false: "number"}
+	switch v := value.(type) {
+	case nil:
+		kind[false] = "null"
+	case bool:
+		kind[false] = "boolean"
+	case string:
+		kind[false] = "string"
+	case float64:
+		kind[false] = map[bool]string{true: "integer", false: "number"}[v == float64(int64(v))]
+	case []any:
+		kind[false] = "array"
+		items, _ := schema["items"].(map[string]any)
+		for i, item := range v {
+			if items != nil {
+				conforms(t, fmt.Sprintf("%s[%d]", path, i), items, item)
+			}
+		}
+	case map[string]any:
+		kind[false] = "object"
+		properties, _ := schema["properties"].(map[string]any)
+		for name, field := range v {
+			property, known := properties[name].(map[string]any)
+			if !known && schema["additionalProperties"] == false {
+				t.Errorf("%s.%s is not a field it takes", path, name)
+			} else if known {
+				conforms(t, path+"."+name, property, field)
+			}
+		}
+		required, _ := schema["required"].([]any)
+		for _, name := range required {
+			if _, given := v[name.(string)]; !given {
+				t.Errorf("%s has no %s, which it requires", path, name)
+			}
+		}
+	}
+	got := kind[false]
+	if len(types) > 0 && !types[got] && !(got == "integer" && types["number"]) {
+		t.Errorf("%s is %s, not %v", path, got, schema["type"])
 	}
 }
 
@@ -217,6 +301,23 @@ func TestSkillInstallPutsItWhereEachClientLooks(t *testing.T) {
 	}
 }
 
+// TestSkillInstallFollowsTheUsersOwnLinks is a home whose skills directory a dotfile manager links
+// elsewhere, by an absolute link: the user's own, so the install goes through it.
+func TestSkillInstallFollowsTheUsersOwnLinks(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, nil)
+	home, _ := h.homeDir()
+	dotfiles := filepath.Join(h.dir, "dotfiles", "claude")
+	if err := os.MkdirAll(dotfiles, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link(t, dotfiles, filepath.Join(home, ".claude"))
+	h.run("skill", "install", "--client", "claude").success(t)
+	if data, err := os.ReadFile(filepath.Join(dotfiles, "skills", "snaphop-maps", "SKILL.md")); err != nil || string(data) != skillText(t) {
+		t.Fatalf("the skill did not go through the link: %v", err)
+	}
+}
+
 func TestSkillInstallIntoAProject(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, nil)
@@ -317,18 +418,19 @@ func TestSkillInstallNeverWritesThroughALink(t *testing.T) {
 	const credentials = `{"version": 1, "accounts": {"https://maps.snaphop.ai": {"apiKey": "shk_irreplaceable"}}}`
 	cases := []struct {
 		name  string
-		plant func(project, victim string)
-		code  string
+		plant func(t *testing.T, project, victim string)
+		// refused is what the error says, when the install is refused.
+		refused string
 	}{
-		{"the skill file is a link", func(project, victim string) {
+		{"the skill file is a link", func(t *testing.T, project, victim string) {
 			link(t, filepath.Join(victim, "credentials.json"), filepath.Join(project, ".claude", "skills", "snaphop-maps", "SKILL.md"))
 		}, ""},
-		{"the skill's directory is a link", func(project, victim string) {
+		{"the skill's directory is a link", func(t *testing.T, project, victim string) {
 			link(t, victim, filepath.Join(project, ".claude", "skills", "snaphop-maps"))
-		}, "SKILL_NOT_INSTALLED"},
-		{"a directory above it leads out of the project", func(project, victim string) {
+		}, "is a link or a file, not the skill's own directory"},
+		{"a directory above it leads out of the project", func(t *testing.T, project, victim string) {
 			link(t, victim, filepath.Join(project, ".claude"))
-		}, "SKILL_NOT_INSTALLED"},
+		}, "escapes"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -341,15 +443,15 @@ func TestSkillInstallNeverWritesThroughALink(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(victim, "credentials.json"), []byte(credentials), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			tc.plant(project, victim)
+			tc.plant(t, project, victim)
 			o := h.run("skill", "install", "--client", "claude", "--project", project)
-			if tc.code == "" {
+			if tc.refused == "" {
 				o.success(t)
 				if data, err := os.ReadFile(filepath.Join(project, ".claude", "skills", "snaphop-maps", "SKILL.md")); err != nil || string(data) != skillText(t) {
 					t.Fatalf("the skill was not installed in place of the link: %v", err)
 				}
-			} else if p := o.failure(t, exitFailure, tc.code); !strings.Contains(p.Hint, "not a link") {
-				t.Fatalf("hint = %q", p.Hint)
+			} else if p := o.failure(t, exitFailure, "SKILL_NOT_INSTALLED"); !strings.Contains(p.Message, tc.refused) {
+				t.Fatalf("message = %q, want %q", p.Message, tc.refused)
 			}
 			if data, _ := os.ReadFile(filepath.Join(victim, "credentials.json")); string(data) != credentials {
 				t.Fatalf("the credentials file now holds %.60q", data)

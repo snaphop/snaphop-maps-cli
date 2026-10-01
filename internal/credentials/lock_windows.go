@@ -13,17 +13,25 @@ var (
 	procUnlockFileEx = kernel32.NewProc("UnlockFileEx")
 )
 
-const lockfileExclusiveLock = 0x2
+const (
+	lockfileFailImmediately = 0x1
+	lockfileExclusiveLock   = 0x2
+	// errorLockViolation is ERROR_LOCK_VIOLATION: another handle holds the lock.
+	errorLockViolation syscall.Errno = 33
+)
 
-// lockFile waits for an exclusive lock on the file's first byte. The system releases it if the
-// process ends.
-func lockFile(file *os.File) error {
+// tryLockFile takes an exclusive lock on the file's first byte if no one else holds it. The system
+// releases it if the process ends.
+func tryLockFile(file *os.File) (bool, error) {
 	var overlapped syscall.Overlapped
-	ok, _, err := procLockFileEx.Call(file.Fd(), lockfileExclusiveLock, 0, 1, 0, uintptr(unsafe.Pointer(&overlapped)))
-	if ok == 0 {
-		return err
+	ok, _, err := procLockFileEx.Call(file.Fd(), lockfileExclusiveLock|lockfileFailImmediately, 0, 1, 0, uintptr(unsafe.Pointer(&overlapped)))
+	if ok != 0 {
+		return true, nil
 	}
-	return nil
+	if err == errorLockViolation {
+		return false, nil
+	}
+	return false, err
 }
 
 func unlockFile(file *os.File) {

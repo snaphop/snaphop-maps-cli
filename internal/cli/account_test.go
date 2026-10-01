@@ -3,6 +3,7 @@ package cli
 import (
 	"embed"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,35 +82,28 @@ func TestANewKeyThatCannotBeKeptIsStillPrinted(t *testing.T) {
 	t.Parallel()
 	t.Run("the file is in the way", func(t *testing.T) {
 		t.Parallel()
-		s := newService(t, func(request) answer { return tool(registered("shk_only_copy")) })
+		s := newService(t, never(t))
 		h := newHarness(t, s)
 		blocker := h.file("blocker", "")
 		h.vars["SNAPHOP_MAPS_CREDENTIALS"] = filepath.Join(blocker, "credentials.json")
-		// Unix cannot read through a file and refuses before sending anything; Windows reads the path
-		// as missing, registers, and cannot keep the key. Either way no key is lost unseen.
+		// Unix cannot read through a file; Windows reads the path as missing and cannot create it. Either
+		// way nothing is sent, so no key is issued that could not be kept.
 		o := h.run("register-agent", "--name", "A")
-		if o.code == exitNotSaved {
-			o.failure(t, exitNotSaved, "CREDENTIALS_NOT_SAVED")
-			if decode(t, o.stdout)["apiKey"] != "shk_only_copy" {
-				t.Fatalf("stdout = %s", o.stdout)
-			}
-			return
-		}
-		o.failure(t, exitFailure, "CREDENTIALS_UNREADABLE")
-		if len(s.received()) != 0 {
-			t.Fatal("registered although the key could not be kept")
+		if o.code != exitFailure || !strings.Contains(o.stderr, "CREDENTIALS_UN") || o.stdout != "" {
+			t.Fatalf("exit %d, stdout %s, stderr %s", o.code, o.stdout, o.stderr)
 		}
 	})
 	t.Run("the file cannot be written", func(t *testing.T) {
 		t.Parallel()
-		s := newService(t, func(request) answer { return tool(registered("shk_only_copy")) })
+		s := newService(t, never(t))
 		h := newHarness(t, s)
 		// A name the file system takes, but not with the temporary file's suffix added.
 		h.vars["SNAPHOP_MAPS_CREDENTIALS"] = filepath.Join(h.dir, strings.Repeat("c", 240))
-		o := h.run("register-agent", "--name", "A")
-		p := o.failure(t, exitNotSaved, "CREDENTIALS_NOT_SAVED")
-		if decode(t, o.stdout)["apiKey"] != "shk_only_copy" || !strings.Contains(p.Hint, "only copy") {
-			t.Fatalf("stdout %s, error %+v", o.stdout, p)
+		for _, args := range [][]string{{"register-agent", "--name", "A"}, {"replace-key", "--api-key", "shk_old"}} {
+			p := h.run(args...).failure(t, exitFailure, "CREDENTIALS_UNWRITABLE")
+			if !strings.Contains(p.Message, "Nothing was sent") || !strings.Contains(p.Hint, "--no-save") {
+				t.Fatalf("error %+v", p)
+			}
 		}
 	})
 	t.Run("the answer has no key", func(t *testing.T) {
@@ -249,8 +243,18 @@ func TestSchemaDescribesEveryCommand(t *testing.T) {
 	if create["tool"] != "create_map" || create["needsApiKey"] != true {
 		t.Fatalf("create-map = %v", create)
 	}
-	if len(out["exitStatuses"].([]any)) != 7 || len(out["environment"].([]any)) != 3 || len(out["globalFlags"].([]any)) != 5 {
+	if len(out["exitStatuses"].([]any)) != 8 || len(out["environment"].([]any)) != 3 || len(out["globalFlags"].([]any)) != 5 {
 		t.Fatalf("schema = %v", out)
+	}
+	for _, entry := range listed {
+		cmd := entry.(map[string]any)
+		if _, isList := cmd["flags"].([]any); !isList {
+			t.Errorf("%s's flags are %v, not a list", cmd["name"], cmd["flags"])
+		}
+		// A command that writes files or sends a key says so.
+		if name := cmd["name"]; (name == "skill" && cmd["readOnly"] != false) || (name == "call" && cmd["needsApiKey"] != true) {
+			t.Errorf("%s = %v", name, cmd)
+		}
 	}
 }
 
@@ -304,4 +308,186 @@ func TestAKeyKeptMeanwhileIsNeverLost(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestANewKeyIsKeptBeforeItIsPrinted is standard output whose reader has gone, as when an agent pipes
+// the answer into a command that ends early: the key printed there is lost, so it must be kept first.
+func TestANewKeyIsKeptBeforeItIsPrinted(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		args []string
+		kept string
+		hint string
+	}{
+		{"kept", []string{"register-agent", "--name", "A"}, "shk_new", "kept in the credentials file"},
+		{"not kept", []string{"register-agent", "--name", "A", "--no-save"}, "", "neither printed nor kept"},
+		{"a replacement not kept", []string{"replace-key", "--api-key", "shk_old", "--no-save"}, "", "Repeat it with the same key"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			s := newService(t, func(request) answer { return tool(registered("shk_new")) })
+			h := newHarness(t, s)
+			h.stdout = failingWriter{}
+			p := h.run(tc.args...).failure(t, exitUnwritten, "OUTPUT_FAILED")
+			if !strings.Contains(p.Message, "broken pipe") || !strings.Contains(p.Hint, tc.hint) {
+				t.Fatalf("error = %+v", p)
+			}
+			if account, _ := h.kept(); account.APIKey != tc.kept {
+				t.Fatalf("kept %q, want %q", account.APIKey, tc.kept)
+			}
+		})
+	}
+}
+
+// TestAnAnswerThatCannotBePrintedIsReported covers every other command's answer.
+func TestAnAnswerThatCannotBePrintedIsReported(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		args []string
+		hint string
+	}{
+		{[]string{"create-map", "--name", "N"}, "list-maps"},
+		{[]string{"get-map", "m1"}, "safe to repeat"},
+		{[]string{"ping"}, "Run it again"},
+		{[]string{"version"}, "Run it again"},
+		{[]string{"help"}, "Run it again"},
+		{nil, "Run it again"},
+		{[]string{"get-map", "--help"}, "Run it again"},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, newService(t, func(request) answer { return tool(map[string]any{"id": "m1"}) }))
+			h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+			h.stdout = failingWriter{}
+			if p := h.run(tc.args...).failure(t, exitUnwritten, "OUTPUT_FAILED"); !strings.Contains(p.Hint, tc.hint) {
+				t.Fatalf("hint = %q, want %q", p.Hint, tc.hint)
+			}
+		})
+	}
+}
+
+// TestAReplacedEnvironmentKeyIsNotSent is replace-key run with $SNAPHOP_MAPS_API_KEY: the file then
+// keeps the new key, and the old one, still in the environment, must not keep being sent in its place.
+func TestAReplacedEnvironmentKeyIsNotSent(t *testing.T) {
+	t.Parallel()
+	for _, before := range []string{"", "shk_old"} {
+		t.Run("kept before: "+before, func(t *testing.T) {
+			t.Parallel()
+			s := newService(t, func(r request) answer {
+				if r.Tool == "replace_key" {
+					return tool(replaced("shk_new"))
+				}
+				return tool(map[string]any{"maps": []any{}})
+			})
+			h := newHarness(t, s)
+			h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_old"
+			if before != "" {
+				h.keep(credentials.Account{APIKey: before, AgentID: "a1"})
+			}
+			h.run("replace-key").success(t)
+			if account, _ := h.kept(); account.APIKey != "shk_new" || account.ReplacedKeySHA256 != digest("shk_old") {
+				t.Fatalf("kept %+v", account)
+			}
+			o := h.run("list-maps")
+			o.success(t)
+			if r := s.received()[1]; r.Auth != "Bearer shk_new" {
+				t.Fatalf("Authorization = %q", r.Auth)
+			}
+			if p := problem(t, strings.TrimSpace(o.stderr), "warning"); p.Code != "ENVIRONMENT_KEY_REPLACED" || !strings.Contains(p.Hint, "Unset") {
+				t.Fatalf("warning = %+v", p)
+			}
+			out := h.run("credentials").success(t)
+			if out["keySource"] != "file" || out["sendsKeptKey"] != true {
+				t.Fatalf("credentials = %v", out)
+			}
+		})
+	}
+}
+
+// TestARefusedKeyNeverLeadsToLosingTheKeptOne: when a key from the environment or a flag is refused
+// while another is kept for the service, registering again would replace the kept key.
+func TestARefusedKeyNeverLeadsToLosingTheKeptOne(t *testing.T) {
+	t.Parallel()
+	for name, set := range map[string]func(h *harness) []string{
+		"environment": func(h *harness) []string { h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_other"; return nil },
+		"flag":        func(*harness) []string { return []string{"--api-key", "shk_other"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, newService(t, func(request) answer { return answer{status: http.StatusUnauthorized} }))
+			h.keep(credentials.Account{APIKey: "shk_kept", ExpiresAt: "2026-09-29T00:00:00Z"})
+			o := h.run(append([]string{"list-maps"}, set(h)...)...)
+			p := o.failure(t, exitRefused, "API_KEY_INVALID")
+			if strings.Contains(p.Hint, "--overwrite") || !strings.Contains(p.Hint, "Leave") || !strings.Contains(p.Hint, h.store().Path) {
+				t.Fatalf("hint = %q", p.Hint)
+			}
+			// The kept key is not the one sent, so its expiry is not this command's to warn of.
+			if strings.Contains(o.stderr, "API_KEY_EXPIRED") {
+				t.Fatalf("stderr = %s", o.stderr)
+			}
+			if out := h.run(append([]string{"credentials"}, set(h)...)...).success(t); out["sendsKeptKey"] != false || out["account"] == nil {
+				t.Fatalf("credentials = %v", out)
+			}
+		})
+	}
+}
+
+// TestAnEnvironmentKeyNeedsNoReadableFile: a key given in the environment is sent even when the
+// credentials file cannot be read, as before the file was consulted for replaced keys.
+func TestAnEnvironmentKeyNeedsNoReadableFile(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) })
+	h := newHarness(t, s)
+	h.vars["SNAPHOP_MAPS_CREDENTIALS"] = h.dir // a directory, not a file
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+	h.run("list-maps").success(t)
+	h.run("list-maps", "--api-key", "shk_flag").success(t)
+	if requests := s.received(); requests[0].Auth != "Bearer shk_env" || requests[1].Auth != "Bearer shk_flag" {
+		t.Fatalf("requests = %+v", requests)
+	}
+}
+
+func TestRelativePathsAreReadAgainstTheWorkingDirectory(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return tool(registered("shk_new")) })
+	h := newHarness(t, s)
+	h.run("register-agent", "--name", "A", "--credentials", "mine.json").success(t)
+	if data, err := os.ReadFile(filepath.Join(h.dir, "mine.json")); err != nil || !strings.Contains(string(data), "shk_new") {
+		t.Fatalf("mine.json: %v", err)
+	}
+	h.vars["SNAPHOP_MAPS_CREDENTIALS"] = "env.json"
+	h.run("register-agent", "--name", "A").success(t)
+	if _, err := os.Stat(filepath.Join(h.dir, "env.json")); err != nil {
+		t.Fatal(err)
+	}
+	out := h.run("skill", "install", "--client", "claude", "--project", "project").success(t)
+	if out["path"] != filepath.Join(h.dir, "project", ".claude", "skills", "snaphop-maps") {
+		t.Fatalf("install = %v", out)
+	}
+}
+
+// TestAKeyKeptUnderTheSchemesOwnPortIsFound: addresses once kept their scheme's own port, as in
+// --url https://maps.snaphop.ai:443, and now drop it. An account kept that way is still found.
+func TestAKeyKeptUnderTheSchemesOwnPortIsFound(t *testing.T) {
+	t.Parallel()
+	s := newService(t, never(t))
+	h := newHarness(t, s)
+	legacy := credentials.Store{Path: h.store().Path}
+	if err := legacy.Put("http://localhost:80/maps", credentials.Account{APIKey: "shk_legacy"}); err != nil {
+		t.Fatal(err)
+	}
+	inv := &invocation{service: "http://localhost/maps"}
+	if kept, err := inv.kept(legacy); err != nil || kept == nil || kept.APIKey != "shk_legacy" {
+		t.Fatalf("kept = %+v, %v", kept, err)
+	}
+	if kept, err := (&invocation{service: "http://localhost/other"}).kept(legacy); kept != nil || err != nil {
+		t.Fatalf("another path found %+v, %v", kept, err)
+	}
+	if kept, err := (&invocation{service: h.service()}).kept(legacy); kept != nil || err != nil {
+		t.Fatalf("an address with its own port found %+v, %v", kept, err)
+	}
+	h.run("register-agent", "--name", "A", "--url", "http://localhost:80/maps").failure(t, exitUsage, "ACCOUNT_ALREADY_KEPT")
 }

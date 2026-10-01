@@ -50,8 +50,7 @@ func runSkill(inv *invocation) int {
 	switch action {
 	case "show":
 		data, _ := skills.FS.ReadFile(skills.Name + "/SKILL.md")
-		_, _ = inv.env.Stdout.Write(data)
-		return exitOK
+		return inv.text(string(data))
 	case "install":
 		return installSkill(inv)
 	case "pack":
@@ -93,15 +92,18 @@ func installSkill(inv *invocation) int {
 		return inv.usage("INVALID_FLAG", fmt.Sprintf("--client %q is not a client skill install knows.", requested),
 			"Give --client as one of "+strings.Join(names, ", ")+". For claude.ai or ChatGPT, upload the zip from `snaphop-maps skill pack`.")
 	}
-	base := *inv.strings["project"]
+	clientDirectory := filepath.FromSlash(client.Directory)
+	// A project may come from anyone, so nothing is written outside it. The user's own skills directory
+	// is theirs, and may be a link, as a dotfile manager makes one: only the skill's directory in it is
+	// confined.
+	base, directory := inv.path(*inv.strings["project"]), filepath.Join(clientDirectory, skills.Name)
 	if base == "" {
 		home, err := inv.env.HomeDir()
 		if err != nil {
 			return inv.fail("NO_HOME_DIRECTORY", "Cannot find the home directory: "+err.Error()+".", "Give a directory with --project.")
 		}
-		base = home
+		base, directory = filepath.Join(home, clientDirectory), skills.Name
 	}
-	directory := filepath.Join(filepath.FromSlash(client.Directory), skills.Name)
 	target := filepath.Join(base, directory)
 	files := skillFiles()
 	replaced, err := writeSkill(base, directory, files)
@@ -112,15 +114,14 @@ func installSkill(inv *invocation) int {
 	document, _ := json.Marshal(map[string]any{
 		"client": client.Name, "reads": client.Reads, "path": target, "files": files, "replaced": replaced,
 	})
-	inv.write(inv.env.Stdout, document)
-	return exitOK
+	return inv.answer(document)
 }
 
 // writeSkill writes the skill's files into directory under base, and nowhere else: a link that leads
 // out of base is refused, the skill's directory may not be a link, and a link where a file goes is
 // replaced rather than followed. A project may come from anyone, and a link it holds must not turn an
-// install into a write over the user's own files, such as the credentials file. It says whether a copy
-// was there before.
+// install into a write over the user's own files, such as the credentials file. base itself is made
+// when missing, through any link on the way to it. It says whether a copy was there before.
 func writeSkill(base, directory string, files []string) (bool, error) {
 	err := os.MkdirAll(base, 0o755)
 	var root *os.Root
@@ -152,10 +153,7 @@ func writeSkill(base, directory string, files []string) (bool, error) {
 // packSkill writes the skill as a zip holding its one directory, the shape claude.ai, ChatGPT and
 // the model APIs take as an upload. The same skill always packs to the same bytes.
 func packSkill(inv *invocation) int {
-	output := inv.first(*inv.strings["output"], defaultSkillZip)
-	if !filepath.IsAbs(output) {
-		output = filepath.Join(inv.env.Dir, output)
-	}
+	output := inv.path(inv.first(*inv.strings["output"], defaultSkillZip))
 	var archive bytes.Buffer
 	writer := zip.NewWriter(&archive)
 	for _, name := range skillFiles() {
@@ -169,6 +167,5 @@ func packSkill(inv *invocation) int {
 	}
 	sum := sha256.Sum256(archive.Bytes())
 	document, _ := json.Marshal(map[string]any{"path": output, "bytes": archive.Len(), "sha256": hex.EncodeToString(sum[:])})
-	inv.write(inv.env.Stdout, document)
-	return exitOK
+	return inv.answer(document)
 }

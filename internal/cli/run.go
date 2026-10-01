@@ -6,6 +6,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +46,11 @@ var errInputTooLarge = errors.New("larger than 8 MiB")
 // minRedacted is the shortest key taken out of standard error. No real key is shorter, and a shorter
 // value would also match ordinary text.
 const minRedacted = 8
+
+// keyShape is what a SnapHop key looks like, sh_agent_ and 43 more characters, or enough of one to
+// matter: a key this run was never told of, such as one typed where a command's name goes, is still
+// taken out of standard error.
+var keyShape = regexp.MustCompile(`sh_[a-z]+_[A-Za-z0-9_-]{8,}`)
 
 // Env is everything a run reads from and writes to, so that tests can supply their own.
 type Env struct {
@@ -86,8 +94,12 @@ type invocation struct {
 	service    string
 	timeout    time.Duration
 	stdinUsed  bool
-	// sent is the key this run sends, taken out of anything it writes to standard error.
-	sent string
+	// choice is the key this run sends, where it came from, and the account kept for the service.
+	choice keyChoice
+	// sent is the key this run sends, taken out of anything it writes to standard error; header says
+	// whether it went as the Authorization header.
+	sent   string
+	header bool
 }
 
 // Run runs one command line and returns its exit status.
@@ -95,10 +107,14 @@ func Run(ctx context.Context, env Env) int {
 	if env.HTTP == nil {
 		env.HTTP = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
-	name, rest := splitCommand(env.Args)
+	name, rest, stray := splitCommand(env.Args)
 	if name == "" {
-		fmt.Fprint(env.Stdout, overview())
-		return exitOK
+		return (&invocation{env: env}).text(overview())
+	}
+	if stray != "" {
+		// The value after an unknown flag was taken as the command's name, and may be a key.
+		return usage(env, "INVALID_FLAG", stray+" is not a flag that can come before the command.",
+			"Only --url, --api-key, --credentials, --timeout and --pretty come before it; give the command's own flags after its name.")
 	}
 	cmd := lookup(name)
 	if cmd == nil {
@@ -115,22 +131,31 @@ func Run(ctx context.Context, env Env) int {
 	return runTool(inv)
 }
 
-// splitCommand finds the command's name, which global flags may come before, and returns the
-// rest of the line without it.
-func splitCommand(args []string) (string, []string) {
+// splitCommand finds the command's name, which global flags may come before, and returns the rest of
+// the line without it, and the first flag before it that is not a global one.
+func splitCommand(args []string) (string, []string, string) {
+	stray := ""
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if !strings.HasPrefix(arg, "-") {
-			return arg, append(append([]string{}, args[:i]...), args[i+1:]...)
+			return arg, append(append([]string{}, args[:i]...), args[i+1:]...), stray
 		}
-		name := strings.TrimLeft(arg, "-")
+		given, _, hasValue := strings.Cut(arg, "=")
+		name := strings.TrimLeft(given, "-")
+		known := name == "h" || name == "help"
 		for _, spec := range globalFlags {
-			if spec.Name == name && spec.Kind != kindLocal {
-				i++ // its value
+			if spec.Name == name {
+				known = true
+				if spec.Kind != kindLocal && !hasValue {
+					i++ // its value
+				}
 			}
 		}
+		if !known && stray == "" {
+			stray = given
+		}
 	}
-	return "", nil
+	return "", nil, ""
 }
 
 // lookup finds a command by its name, or by the name of the tool it calls.
@@ -150,7 +175,7 @@ func (inv *invocation) parse(args []string) (int, bool) {
 	inv.fs = fs
 	inv.strings = map[string]*string{}
 	inv.switches = map[string]*bool{}
-	for _, spec := range append(append([]flagSpec{}, globalFlags...), inv.cmd.Flags...) {
+	for _, spec := range inv.flags() {
 		switch spec.Kind {
 		case kindLocal, kindBool:
 			inv.switches[spec.Name] = fs.Bool(spec.Name, false, spec.Description)
@@ -159,16 +184,23 @@ func (inv *invocation) parse(args []string) (int, bool) {
 		}
 	}
 	for {
+		before := args
 		if err := fs.Parse(args); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
-				fmt.Fprint(inv.env.Stdout, commandHelp(inv.cmd))
-				return exitOK, false
+				return inv.text(commandHelp(inv.cmd)), false
 			}
-			return usage(inv.env, "INVALID_FLAG", err.Error(), "Run `snaphop-maps help "+inv.cmd.Name+"` for its flags."), false
+			return inv.usage("INVALID_FLAG", err.Error(), "Run `snaphop-maps help "+inv.cmd.Name+"` for its flags."), false
 		}
 		args = fs.Args()
 		if len(args) == 0 {
 			break
+		}
+		// A switch takes its value after =: in `--publish false`, false is a positional argument.
+		if value := strings.ToLower(args[0]); value == "true" || value == "false" {
+			if name := inv.switchBefore(before, args); name != "" {
+				return inv.usage("INVALID_FLAG", fmt.Sprintf("--%s takes its value after =, as --%s=%s.", name, name, value),
+					"Write --"+name+"="+value+"; `--"+name+" "+value+"` would take "+value+" as the command's argument."), false
+			}
 		}
 		inv.positional = append(inv.positional, args[0])
 		args = args[1:]
@@ -180,9 +212,16 @@ func (inv *invocation) parse(args []string) (int, bool) {
 		return inv.usage("UNEXPECTED_ARGUMENT", fmt.Sprintf("%s takes no argument %q.", inv.cmd.Name, inv.positional[len(inv.positional)-1]),
 			"Run `snaphop-maps help "+inv.cmd.Name+"`."), false
 	}
-	service, err := serviceURL(inv.first(*inv.strings["url"], inv.env.Getenv("SNAPHOP_MAPS_URL"), DefaultURL))
+	if inv.cmd.offline {
+		return exitOK, true
+	}
+	source, raw := "--url", *inv.strings["url"]
+	if raw == "" {
+		source, raw = "$SNAPHOP_MAPS_URL", inv.env.Getenv("SNAPHOP_MAPS_URL")
+	}
+	service, err := serviceURL(inv.first(raw, DefaultURL), source)
 	if err != nil {
-		return inv.usage("INVALID_URL", err.Error(), "Give --url as https://host, such as "+DefaultURL+"."), false
+		return inv.usage("INVALID_URL", err.Error(), "Give "+source+" as https://host, such as "+DefaultURL+"."), false
 	}
 	inv.service = service
 	inv.timeout = DefaultTimeout
@@ -196,6 +235,26 @@ func (inv *invocation) parse(args []string) (int, bool) {
 	return exitOK, true
 }
 
+func (inv *invocation) flags() []flagSpec {
+	return append(append([]flagSpec{}, globalFlags...), inv.cmd.Flags...)
+}
+
+// switchBefore names the switch that was the last word parsed before rest, when it was given
+// without a value.
+func (inv *invocation) switchBefore(before, rest []string) string {
+	parsed := len(before) - len(rest)
+	if parsed == 0 || strings.Contains(before[parsed-1], "=") {
+		return ""
+	}
+	name := strings.TrimLeft(before[parsed-1], "-")
+	for _, spec := range inv.flags() {
+		if spec.Name == name && (spec.Kind == kindBool || spec.Kind == kindLocal) {
+			return name
+		}
+	}
+	return ""
+}
+
 func (inv *invocation) first(values ...string) string {
 	for _, value := range values {
 		if value != "" {
@@ -205,21 +264,58 @@ func (inv *invocation) first(values ...string) string {
 	return ""
 }
 
-// serviceURL checks a service address and gives it one spelling: scheme and host in lower case and
-// no trailing slash, so that a kept key is found again and sent to no other service.
-func serviceURL(raw string) (string, error) {
+// path is a path given on the command line or in the environment, read against the working directory.
+func (inv *invocation) path(name string) string {
+	if name == "" || filepath.IsAbs(name) {
+		return name
+	}
+	return filepath.Join(inv.env.Dir, name)
+}
+
+// serviceURL checks a service address and gives it one spelling: scheme and host in lower case,
+// without the scheme's own port or a trailing slash, so that a kept key is found again and sent to no
+// other service. source names where the address was given.
+func serviceURL(raw, source string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("--url %q is not a URL", raw)
+		return "", fmt.Errorf("%s %q is not a URL", source, raw)
 	}
 	scheme := strings.ToLower(u.Scheme)
 	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (scheme != "https" && scheme != "http") {
-		return "", fmt.Errorf("--url %q is not an http(s) address of a service, without credentials, query or fragment", raw)
+		return "", fmt.Errorf("%s %q is not an http(s) address of a service, without credentials, query or fragment", source, raw)
 	}
 	if scheme == "http" && !loopback(u.Hostname()) {
-		return "", fmt.Errorf("--url %q is plain http to another machine, which would send the API key unencrypted", raw)
+		return "", fmt.Errorf("%s %q is plain http to another machine, which would send the API key unencrypted", source, raw)
 	}
-	return scheme + "://" + strings.ToLower(u.Host) + strings.TrimRight(u.EscapedPath(), "/"), nil
+	host := u.Hostname()
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port := u.Port(); port != "" && !(scheme == "https" && port == "443") && !(scheme == "http" && port == "80") {
+		host += ":" + port
+	}
+	return scheme + "://" + strings.ToLower(host) + strings.TrimRight(u.EscapedPath(), "/"), nil
+}
+
+// kept is the account kept for the service. One kept under the address with its scheme's own port,
+// as addresses were spelled before that port was dropped from them, is found too.
+func (inv *invocation) kept(store credentials.Store) (*credentials.Account, error) {
+	spellings := []string{inv.service}
+	// inv.service is already checked, and is http or https.
+	if u, _ := url.Parse(inv.service); u.Port() == "" {
+		port := map[string]string{"https": ":443", "http": ":80"}[u.Scheme]
+		spellings = append(spellings, u.Scheme+"://"+u.Host+port+u.EscapedPath())
+	}
+	for _, service := range spellings {
+		account, found, err := store.Get(service)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			return &account, nil
+		}
+	}
+	return nil, nil
 }
 
 func loopback(host string) bool {
@@ -270,9 +366,14 @@ func (inv *invocation) arguments() (map[string]any, int, bool) {
 		}
 	}
 	for _, spec := range inv.cmd.Flags {
-		if len(inv.positional) == 1 && spec.Argument == inv.cmd.Positional {
-			arguments[spec.Argument] = inv.positional[0]
+		if len(inv.positional) != 1 || spec.Argument != inv.cmd.Positional {
+			continue
 		}
+		if value := *inv.strings[spec.Name]; inv.set[spec.Name] && value != inv.positional[0] {
+			return nil, inv.usage("CONFLICTING_ARGUMENT", fmt.Sprintf("%s is given twice, as %q and as --%s %q.", spec.Argument, inv.positional[0], spec.Name, value),
+				"Give it once, either first or with --"+spec.Name+"."), false
+		}
+		arguments[spec.Argument] = inv.positional[0]
 	}
 	for _, spec := range inv.cmd.Flags {
 		if _, given := arguments[spec.Argument]; spec.Required && !given {
@@ -312,8 +413,11 @@ func (inv *invocation) readJSON(flagName, raw string) (any, int, bool) {
 	decoder.UseNumber()
 	var value any
 	err = decoder.Decode(&value)
-	if err == nil && decoder.More() {
-		err = errors.New("more than one JSON value")
+	if err == nil {
+		// Anything after the value, even a stray ] or }, which the decoder would leave unread.
+		if _, next := decoder.Token(); next != io.EOF {
+			err = errors.New("more follows the first JSON value")
+		}
 	}
 	if err != nil {
 		return nil, inv.usage("INVALID_JSON", fmt.Sprintf("%s is not one JSON value: %v", source, err), "Quote JSON for the shell, or pass it as @file."), false
@@ -323,10 +427,7 @@ func (inv *invocation) readJSON(flagName, raw string) (any, int, bool) {
 
 // readFile reads a file named after @, relative to the working directory, up to maxInputBytes.
 func (inv *invocation) readFile(name string) ([]byte, error) {
-	if !filepath.IsAbs(name) {
-		name = filepath.Join(inv.env.Dir, name)
-	}
-	file, err := os.Open(name)
+	file, err := os.Open(inv.path(name))
 	if err != nil {
 		return nil, err
 	}
@@ -346,37 +447,63 @@ func readLimited(r io.Reader) ([]byte, error) {
 // store is the credentials file this run uses.
 func (inv *invocation) store() (credentials.Store, error) {
 	if path := inv.first(*inv.strings["credentials"], inv.env.Getenv("SNAPHOP_MAPS_CREDENTIALS")); path != "" {
-		return credentials.Store{Path: path}, nil
+		return credentials.Store{Path: inv.path(path)}, nil
 	}
 	path, err := credentials.DefaultPath(inv.env.ConfigDir)
 	return credentials.Store{Path: path}, err
 }
 
-// key is the API key to send, where it came from, and the account kept for this service. A key from
-// the environment is only for the service the environment names (ADR 0004): --url alone cannot send
-// it elsewhere.
-func (inv *invocation) key() (string, string, *credentials.Account, error) {
-	if value := *inv.strings["api-key"]; value != "" {
-		return value, "flag", nil, nil
-	}
-	if value := inv.env.Getenv("SNAPHOP_MAPS_API_KEY"); value != "" && inv.service == inv.environmentService() {
-		return value, "environment", nil, nil
-	}
+// keyChoice is the key a command sends, where it comes from, and the account kept for the service.
+type keyChoice struct {
+	key    string
+	source string // flag, environment, file or none
+	kept   *credentials.Account
+	path   string
+	// replaced says the environment's key is one that the kept key replaced, and is not sent.
+	replaced bool
+}
+
+// sendsKept says whether the key sent is the one kept for the service.
+func (c keyChoice) sendsKept() bool { return c.kept != nil && c.kept.APIKey == c.key }
+
+// key chooses the API key to send: --api-key, then $SNAPHOP_MAPS_API_KEY, then the key kept for the
+// service. The environment's key is only for the service the environment names (ADR 0004): --url
+// alone cannot send it elsewhere. Nor is it sent when the kept key replaced it (ADR 0005): it stops
+// working once the new key is used, and sending it meanwhile would leave the new key unused until the
+// old one expired.
+func (inv *invocation) key() (keyChoice, error) {
 	store, err := inv.store()
-	if err != nil {
-		return "", "", nil, err
+	var kept *credentials.Account
+	if err == nil {
+		kept, err = inv.kept(store)
 	}
-	account, ok, err := store.Get(inv.service)
-	if err != nil || !ok {
-		return "", "none", nil, err
+	environment := inv.env.Getenv("SNAPHOP_MAPS_API_KEY")
+	forHere := environment != "" && inv.service == inv.environmentService()
+	stale := forHere && kept != nil && kept.ReplacedKeySHA256 == digest(environment)
+	switch {
+	case *inv.strings["api-key"] != "":
+		return keyChoice{key: *inv.strings["api-key"], source: "flag", kept: kept, path: store.Path}, nil
+	case forHere && !stale:
+		// A key from the environment is sent even when the file cannot be read.
+		return keyChoice{key: environment, source: "environment", kept: kept, path: store.Path}, nil
+	case err != nil:
+		return keyChoice{}, err
+	case kept == nil:
+		return keyChoice{source: "none", path: store.Path}, nil
 	}
-	return account.APIKey, "file", &account, nil
+	return keyChoice{key: kept.APIKey, source: "file", kept: kept, path: store.Path, replaced: stale}, nil
+}
+
+// digest is a key's SHA-256 in hex, which the file keeps of a replaced key instead of the key.
+func digest(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:])
 }
 
 // environmentService is the service $SNAPHOP_MAPS_API_KEY is for: $SNAPHOP_MAPS_URL's, or else the
 // default. None, when $SNAPHOP_MAPS_URL is no service address.
 func (inv *invocation) environmentService() string {
-	service, _ := serviceURL(inv.first(inv.env.Getenv("SNAPHOP_MAPS_URL"), DefaultURL))
+	service, _ := serviceURL(inv.first(inv.env.Getenv("SNAPHOP_MAPS_URL"), DefaultURL), "$SNAPHOP_MAPS_URL")
 	return service
 }
 
@@ -385,6 +512,7 @@ func (inv *invocation) client() *mcp.Client {
 		Endpoint:  inv.service + "/mcp",
 		HTTP:      inv.env.HTTP,
 		UserAgent: "snaphop-maps-cli/" + inv.env.Version + " (+https://github.com/snaphop/snaphop-maps-cli)",
+		Redact:    inv.redactText,
 	}
 }
 
@@ -411,22 +539,21 @@ func runCall(inv *invocation) int {
 	return inv.callTool(strings.ReplaceAll(inv.positional[0], "-", "_"), arguments)
 }
 
-// callTool calls one tool and reports its answer, keeping any key it issues.
+// callTool calls one tool and reports its answer, keeping any key it issues. A key is kept before it
+// is printed, and a command that would issue one first proves it could keep it (ADR 0005): the key is
+// shown only once, and printing can fail, or end the process, as keeping it cannot.
 func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 	if tool == "withdraw_map" && !inv.on("yes") {
 		return inv.usage("CONFIRMATION_REQUIRED", "Withdrawing a map takes it down for good and cannot be undone.", "Add --yes to withdraw it.")
 	}
-	saves := (tool == "register_agent" || tool == "replace_key") && !inv.on("no-save")
+	issues := tool == "register_agent" || tool == "replace_key"
+	saves := issues && !inv.on("no-save")
 	var store credentials.Store
 	var kept *credentials.Account
 	if saves {
 		var err error
 		if store, err = inv.store(); err == nil {
-			var account credentials.Account
-			var found bool
-			if account, found, err = store.Get(inv.service); found {
-				kept = &account
-			}
+			kept, err = inv.kept(store)
 		}
 		if err != nil {
 			return inv.fail("CREDENTIALS_UNREADABLE", err.Error()+". Nothing was sent.",
@@ -437,19 +564,25 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 				"An account for "+inv.service+" is already kept in "+store.Path+", and registering would replace its key.",
 				"Use that account: it needs no registration. To open another anyway, add --no-save, or --overwrite to replace the kept one.")
 		}
+		if err := store.Check(); err != nil {
+			return inv.fail("CREDENTIALS_UNWRITABLE", err.Error()+". Nothing was sent: the new key could not have been kept.",
+				"Make the file and its directory writable, give another file with --credentials, or add --no-save to only print the key.")
+		}
 	}
 	// A key among the arguments is sent as the service takes it there, and no header goes with it.
 	apiKey, used := "", ""
 	if given, inArguments := arguments["apiKey"]; inArguments {
-		used, _ = given.(string)
+		if used, _ = given.(string); used == "" {
+			return inv.usage("INVALID_FLAG", "--args gives apiKey, but not as a key.",
+				"Give apiKey as the key itself, or leave it out to send the key from the environment or the credentials file.")
+		}
 	} else if tool != "register_agent" {
-		var err error
-		var source string
-		var account *credentials.Account
-		if apiKey, source, account, err = inv.key(); err != nil {
+		choice, err := inv.key()
+		if err != nil {
 			return inv.fail("CREDENTIALS_UNREADABLE", err.Error()+". Nothing was sent.", "Fix or move the file, or give the key with $SNAPHOP_MAPS_API_KEY.")
 		}
-		if source == "none" {
+		inv.choice = choice
+		if choice.source == "none" {
 			hint := "Run `snaphop-maps register-agent --name NAME` once, which keeps one, or set $SNAPHOP_MAPS_API_KEY."
 			if inv.env.Getenv("SNAPHOP_MAPS_API_KEY") != "" {
 				hint = "$SNAPHOP_MAPS_API_KEY is only sent to $SNAPHOP_MAPS_URL, or to " + DefaultURL +
@@ -457,10 +590,10 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 			}
 			return inv.usage("API_KEY_REQUIRED", "No API key is kept for "+inv.service+" and none was given for it.", hint)
 		}
-		inv.warnExpiry(account)
-		used = apiKey
+		inv.warnChoice()
+		apiKey, used = choice.key, choice.key
 	}
-	inv.sent = used
+	inv.sent, inv.header = used, apiKey != ""
 	ctx, cancel := inv.deadline()
 	defer cancel()
 	result, failure := inv.client().CallTool(ctx, tool, arguments, apiKey)
@@ -470,11 +603,21 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 	if result.IsError {
 		return inv.refused(result.Structured)
 	}
-	inv.write(inv.env.Stdout, result.Structured)
+	notKept := ""
 	if saves {
-		if code := inv.keep(tool, result.Structured, store, kept, used); code != exitOK {
-			return code
+		notKept = inv.keep(tool, result.Structured, store, kept, used)
+	}
+	if err := inv.writeAnswer(result.Structured); err != nil {
+		switch {
+		case issues && saves && notKept == "":
+			return inv.unwritten(err, "The new key is kept in the credentials file for every later command; `snaphop-maps credentials` describes it.")
+		case issues:
+			return inv.unwritten(err, "The new key was neither printed nor kept, and cannot be recovered. "+repeatHint(tool))
 		}
+		return inv.unwritten(err, "The request was carried out, but its answer is lost. "+repeatHint(tool))
+	}
+	if notKept != "" {
+		return inv.notSaved(notKept)
 	}
 	var answer struct {
 		ID               string          `json:"id"`
@@ -492,17 +635,21 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 	return exitOK
 }
 
-// keep puts the key an answer carries in the credentials file. It decides against the file as it is
-// when the key is put there, under the file's lock, since another command may have kept a key since
-// this one began. A new registration replaces only the account it was told to; a replacement only
-// replaces the key it was made with. Any other key would otherwise be lost for good.
-func (inv *invocation) keep(tool string, structured json.RawMessage, store credentials.Store, kept *credentials.Account, used string) int {
+// keep puts the key an answer carries in the credentials file, and returns why it could not, if it
+// could not. It decides against the file as it is when the key is put there, under the file's lock,
+// since another command may have kept a key since this one began. A new registration replaces only
+// the account it was told to; a replacement only replaces the key it was made with, and remembers
+// that key's digest so that it is not sent again. Any other key would otherwise be lost for good.
+func (inv *invocation) keep(tool string, structured json.RawMessage, store credentials.Store, kept *credentials.Account, used string) string {
 	var issued credentials.Account
 	_ = json.Unmarshal(structured, &issued)
 	if issued.APIKey == "" {
-		return inv.notSaved("The answer carries no apiKey to keep.")
+		return "The answer carries no apiKey to keep."
 	}
 	issued.SavedAt = inv.env.Now().UTC().Format(time.RFC3339)
+	if tool == "replace_key" {
+		issued.ReplacedKeySHA256 = digest(used)
+	}
 	err := store.Update(inv.service, func(current credentials.Account, found bool) (credentials.Account, error) {
 		switch {
 		case tool == "register_agent" && found && (kept == nil || current.APIKey != kept.APIKey):
@@ -510,31 +657,45 @@ func (inv *invocation) keep(tool string, structured json.RawMessage, store crede
 		case tool == "replace_key" && found && current.APIKey != used:
 			return current, errors.New("Another account's key is kept for " + inv.service + " in " + store.Path + ", so the new key was not put in its place")
 		case tool == "replace_key" && found:
-			current.APIKey, current.KeyID, current.ExpiresAt, current.Scopes, current.SavedAt = issued.APIKey, issued.KeyID, issued.ExpiresAt, issued.Scopes, issued.SavedAt
+			current.APIKey, current.KeyID, current.ExpiresAt, current.Scopes, current.SavedAt, current.ReplacedKeySHA256 =
+				issued.APIKey, issued.KeyID, issued.ExpiresAt, issued.Scopes, issued.SavedAt, issued.ReplacedKeySHA256
 			return current, nil
 		}
 		return issued, nil
 	})
 	if err != nil {
-		return inv.notSaved(err.Error() + ".")
+		return err.Error() + "."
 	}
-	return exitOK
+	return ""
 }
 
 func (inv *invocation) notSaved(message string) int {
 	inv.report(Problem{
 		Code:    "CREDENTIALS_NOT_SAVED",
 		Message: message,
-		Hint:    "The apiKey on standard output is the only copy: keep it somewhere that outlasts this conversation, and pass it with $SNAPHOP_MAPS_API_KEY.",
+		Hint: "The apiKey on standard output is the account's only copy of its key. Give it to the user this once, to keep " +
+			"somewhere safe such as a password manager, and send it with $SNAPHOP_MAPS_API_KEY until it is kept.",
 	})
 	return exitNotSaved
 }
 
-// warnExpiry says on standard error when a kept key expires within a week, or has expired.
-func (inv *invocation) warnExpiry(account *credentials.Account) {
-	if account == nil {
+// unwritten reports an answer that could not be written to standard output.
+func (inv *invocation) unwritten(err error, hint string) int {
+	inv.report(Problem{Code: "OUTPUT_FAILED", Message: "Cannot write the answer to standard output: " + err.Error() + ".", Hint: hint})
+	return exitUnwritten
+}
+
+// warnChoice says on standard error what an agent should know about the key it sends: that the
+// environment's key was replaced, or that the kept key it sends expires within a week or has expired.
+func (inv *invocation) warnChoice() {
+	if inv.choice.replaced {
+		inv.warn("ENVIRONMENT_KEY_REPLACED", "$SNAPHOP_MAPS_API_KEY holds a key that replace-key replaced, so the key kept for "+
+			inv.service+" in "+inv.choice.path+" was sent instead.", "Unset $SNAPHOP_MAPS_API_KEY: the kept key is sent without it.")
+	}
+	if !inv.choice.sendsKept() {
 		return
 	}
+	account := inv.choice.kept
 	expires, err := time.Parse(time.RFC3339, account.ExpiresAt)
 	if err != nil {
 		return
@@ -552,36 +713,57 @@ func (inv *invocation) warnExpiry(account *credentials.Account) {
 
 func (inv *invocation) warn(code, message, hint string) {
 	document, _ := json.Marshal(map[string]Problem{"warning": {Code: code, Message: message, Hint: hint}})
-	inv.write(inv.env.Stderr, inv.redact(document))
+	inv.emit(document)
 }
 
-// redact takes every key this run knows out of a document for standard error: the key it sends, and
-// those given by flag or environment. A mistyped command line can echo one back, and so can an error
-// body from something between here and the service.
-func (inv *invocation) redact(document []byte) []byte {
-	flagKey := ""
-	if value := inv.strings["api-key"]; value != nil {
-		flagKey = *value
-	}
-	for _, key := range []string{inv.sent, flagKey, inv.env.Getenv("SNAPHOP_MAPS_API_KEY")} {
+// secrets are the keys this run knows: the key it sends, and those given by flag or environment.
+func (inv *invocation) secrets() []string {
+	var keys []string
+	for _, key := range []string{inv.sent, inv.lookupString("api-key"), inv.env.Getenv("SNAPHOP_MAPS_API_KEY")} {
 		if len(key) >= minRedacted {
-			// The key as it appears inside a JSON string.
-			quoted, _ := json.Marshal(key)
-			document = bytes.ReplaceAll(document, quoted[1:len(quoted)-1], []byte("[REDACTED]"))
+			keys = append(keys, key)
 		}
 	}
-	return document
+	return keys
+}
+
+func (inv *invocation) lookupString(name string) string {
+	if value := inv.strings[name]; value != nil {
+		return *value
+	}
+	return ""
+}
+
+// redact takes every key out of a document for standard error: the keys this run knows, and anything
+// shaped like a key. A mistyped command line can echo one back, and so can an error body from
+// something between here and the service.
+func (inv *invocation) redact(document []byte) []byte {
+	for _, key := range inv.secrets() {
+		// The key as it appears inside a JSON string.
+		quoted, _ := json.Marshal(key)
+		document = bytes.ReplaceAll(document, quoted[1:len(quoted)-1], []byte("[REDACTED]"))
+	}
+	return keyShape.ReplaceAll(document, []byte("[REDACTED]"))
+}
+
+// redactText is redact for text not yet in a document, such as an answer's body before it is cut short.
+func (inv *invocation) redactText(text string) string {
+	for _, key := range inv.secrets() {
+		text = strings.ReplaceAll(text, key, "[REDACTED]")
+	}
+	return keyShape.ReplaceAllString(text, "[REDACTED]")
 }
 
 // transport reports a failed exchange, saying what repeating the request would do.
 func (inv *invocation) transport(failure *mcp.Error, tool string) int {
 	// The service's security chain refuses a header's unknown, expired or revoked key before any tool
-	// sees it: a refusal like the tools' own, and nothing was carried out.
-	if failure.Status == http.StatusUnauthorized {
+	// sees it: a refusal like the tools' own, and nothing was carried out. Without a key sent, a 401
+	// comes from something else.
+	if failure.Status == http.StatusUnauthorized && inv.header {
 		inv.report(Problem{
 			Code:    "API_KEY_INVALID",
 			Message: "The service refused the API key: it is unknown, expired or revoked (" + failure.Message + ").",
-			Hint:    refusalHints["API_KEY_INVALID"],
+			Hint:    inv.refusalHint("API_KEY_INVALID"),
 			Status:  failure.Status,
 		})
 		return exitRefused
@@ -590,10 +772,7 @@ func (inv *invocation) transport(failure *mcp.Error, tool string) int {
 	problem := Problem{Code: failure.Code, Message: failure.Message, Status: failure.Status, RetryAfter: failure.RetryAfter, OutcomeKnown: &known}
 	switch {
 	case !known:
-		problem.Hint = repeatHints[tool]
-		if problem.Hint == "" {
-			problem.Hint = "It is safe to repeat."
-		}
+		problem.Hint = repeatHint(tool)
 		if failure.Code == "INVALID_RESPONSE" {
 			problem.Hint += " The answer was not one this program can read: check that --url names a SnapHop Maps service, such as " + DefaultURL + "."
 		}
@@ -613,6 +792,18 @@ func retryAfter(value string) string {
 		return ""
 	}
 	return ", after the " + value + " the service asked for"
+}
+
+// repeatHint says what to do when a tool's answer never arrived or was lost. A tool this build does
+// not know may change something, so it is not called safe to repeat.
+func repeatHint(tool string) string {
+	if hint := repeatHints[tool]; hint != "" {
+		return hint
+	}
+	if cmd := lookup(tool); tool == "" || (cmd != nil && cmd.ReadOnly) {
+		return "It is safe to repeat."
+	}
+	return "It may have been carried out. Unless the tool only reads, check what it does before repeating it."
 }
 
 // repeatHints say, for each tool, what to do when its answer never arrived: the service's own
@@ -646,6 +837,18 @@ var refusalHints = map[string]string{
 	"UNKNOWN_TOOL":                  "Run `snaphop-maps tools` for the tools the service has.",
 }
 
+// refusalHint is the next step after a refusal. When the refused key came from a flag or the
+// environment while another is kept for the service, registering again would replace the kept key,
+// so the hint points to that key instead.
+func (inv *invocation) refusalHint(code string) string {
+	if code == "API_KEY_INVALID" && inv.choice.kept != nil && !inv.choice.sendsKept() {
+		given := map[string]string{"flag": "--api-key", "environment": "$SNAPHOP_MAPS_API_KEY"}[inv.choice.source]
+		return "The key from " + given + " was refused, but another is kept for " + inv.service + " in " + inv.choice.path +
+			". Leave " + given + " out to send the kept one. Do not register again: that would replace it."
+	}
+	return refusalHints[code]
+}
+
 // refused reports a tool's refusal as the service gave it, with the next step when one is known.
 func (inv *invocation) refused(structured json.RawMessage) int {
 	var answer struct {
@@ -654,7 +857,7 @@ func (inv *invocation) refused(structured json.RawMessage) int {
 	if json.Unmarshal(structured, &answer) != nil || answer.Error.Code == "" {
 		answer.Error = Problem{Code: "REFUSED", Message: "The service refused the request.", Detail: structured}
 	}
-	answer.Error.Hint = refusalHints[answer.Error.Code]
+	answer.Error.Hint = inv.refusalHint(answer.Error.Code)
 	inv.report(answer.Error)
 	return exitRefused
 }
@@ -676,36 +879,28 @@ func rpcCommand(method string) func(*invocation) int {
 		if failure != nil {
 			return inv.transport(failure, "")
 		}
-		inv.write(inv.env.Stdout, result)
-		return exitOK
+		return inv.answer(result)
 	}
 }
 
 func runCredentials(inv *invocation) int {
-	store, err := inv.store()
-	if err != nil {
+	if _, err := inv.store(); err != nil {
 		return inv.fail("CREDENTIALS_UNREADABLE", err.Error()+".", "Give the file with --credentials.")
 	}
-	_, source, account, err := inv.key()
+	choice, err := inv.key()
 	if err != nil {
 		return inv.fail("CREDENTIALS_UNREADABLE", err.Error()+".", "Fix or move the file, or give another with --credentials.")
 	}
-	answer := map[string]any{"url": inv.service, "path": store.Path, "keySource": source, "account": nil}
-	if account == nil {
-		// A key from a flag or the environment: the file may still keep an account for this service.
-		kept, found, _ := store.Get(inv.service)
-		if found {
-			account = &kept
-		}
-	}
-	if account != nil {
+	inv.choice = choice
+	answer := map[string]any{"url": inv.service, "path": choice.path, "keySource": choice.source, "sendsKeptKey": choice.sendsKept(), "account": nil}
+	if choice.kept != nil {
+		account := *choice.kept
 		account.APIKey = ""
 		answer["account"] = account
-		inv.warnExpiry(account)
 	}
+	inv.warnChoice()
 	document, _ := json.Marshal(answer)
-	inv.write(inv.env.Stdout, document)
-	return exitOK
+	return inv.answer(document)
 }
 
 func (inv *invocation) on(name string) bool {
@@ -713,8 +908,8 @@ func (inv *invocation) on(name string) bool {
 	return ok && *value
 }
 
-// write writes one JSON document on one line, or indented with --pretty.
-func (inv *invocation) write(w io.Writer, document []byte) {
+// writeAnswer writes one JSON document to standard output, on one line or indented with --pretty.
+func (inv *invocation) writeAnswer(document []byte) error {
 	var out bytes.Buffer
 	if inv.pretty {
 		_ = json.Indent(&out, document, "", "  ")
@@ -722,12 +917,37 @@ func (inv *invocation) write(w io.Writer, document []byte) {
 		_ = json.Compact(&out, document)
 	}
 	out.WriteByte('\n')
-	_, _ = w.Write(out.Bytes())
+	_, err := inv.env.Stdout.Write(out.Bytes())
+	return err
+}
+
+// answer writes a command's answer, and reports it when standard output cannot take it.
+func (inv *invocation) answer(document []byte) int {
+	if err := inv.writeAnswer(document); err != nil {
+		return inv.unwritten(err, "Run it again with standard output going somewhere that can take it.")
+	}
+	return exitOK
+}
+
+// text writes text, such as help, to standard output.
+func (inv *invocation) text(text string) int {
+	if _, err := io.WriteString(inv.env.Stdout, text); err != nil {
+		return inv.unwritten(err, "Run it again with standard output going somewhere that can take it.")
+	}
+	return exitOK
+}
+
+// emit writes one JSON document to standard error, always on one line, with every key taken out.
+func (inv *invocation) emit(document []byte) {
+	var out bytes.Buffer
+	_ = json.Compact(&out, inv.redact(document))
+	out.WriteByte('\n')
+	_, _ = inv.env.Stderr.Write(out.Bytes())
 }
 
 func (inv *invocation) report(problem Problem) {
 	document, _ := json.Marshal(map[string]Problem{"error": problem})
-	inv.write(inv.env.Stderr, inv.redact(document))
+	inv.emit(document)
 }
 
 func (inv *invocation) usage(code, message, hint string) int {

@@ -1,4 +1,4 @@
-.PHONY: build test coverage lint fmt check dist clean
+.PHONY: build test coverage lint fmt check dist clean FORCE
 
 # Every statement is covered, and it stays that way (AGENTS.md).
 COVERAGE_MIN ?= 100.0
@@ -31,12 +31,16 @@ check: lint build coverage
 dist: $(BINARIES) dist/snaphop-maps-skill.zip
 	cd dist && sha256sum snaphop-maps-* > SHA256SUMS
 
+# Every file in dist is rebuilt each time, from the source and VERSION as they are now: Go's build cache
+# makes that cheap, and a file kept from an earlier build would go out under a new SHA256SUMS.
+FORCE:
+
 # The Agent Skill as a zip to upload, packed by the CLI itself (ADR 0003).
-dist/snaphop-maps-skill.zip:
+dist/snaphop-maps-skill.zip: FORCE
 	@mkdir -p dist
 	go run ./cmd/snaphop-maps skill pack --output $@
 
-dist/snaphop-maps-%:
+dist/snaphop-maps-%: FORCE
 	@mkdir -p dist
 	platform=$$(echo "$*" | sed 's/\.exe$$//'); \
 	GOOS=$${platform%-*} GOARCH=$${platform#*-} $(BUILD) -o $@ ./cmd/snaphop-maps
