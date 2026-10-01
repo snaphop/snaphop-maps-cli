@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-01
+
 ### Added
 
 - **Invite the people you work for**, at parity with SnapHop Maps' five new MCP tools. `invite-person --email
