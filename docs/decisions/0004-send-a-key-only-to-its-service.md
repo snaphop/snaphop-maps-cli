@@ -18,8 +18,8 @@ account's only credential to someone else, without the key ever appearing in the
 - When `--url` names another service, the environment's key is not sent. The command uses the key kept in the
   credentials file for that service, if any, and otherwise fails with `API_KEY_REQUIRED`, whose hint says to set
   `$SNAPHOP_MAPS_URL` instead of giving `--url`.
-- Addresses are compared in the one spelling `--url` is reduced to, so `https://Maps.SnapHop.ai/` and
-  `https://maps.snaphop.ai` are the same service.
+- Addresses are compared in the one spelling `--url` is reduced to, so `https://Maps.SnapHop.ai/`,
+  `https://maps.snaphop.ai:443` and `https://maps.snaphop.ai` are the same service.
 - `--api-key` is still sent to the service `--url` names. Both are given on the same command line, and a key there
   is plain for anyone reviewing the command.
 - `credentials` reports the key a command would send, so `keySource` is `none` for a service the environment's key

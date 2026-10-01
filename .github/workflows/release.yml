@@ -17,8 +17,10 @@ on:
         type: string
 permissions:
   contents: read
+# One run per tag at a time. A fixed group would keep only the newest of several waiting runs and cancel
+# the rest, so a tag pushed meanwhile could go unreleased.
 concurrency:
-  group: release
+  group: release-${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
   cancel-in-progress: false
 env:
   TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
@@ -126,6 +128,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # gh release create publishes the tag where it points now: refuse one moved since this run built.
+          target=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          if [ "$target" != "$GITHUB_SHA" ]; then
+            echo "$TAG now points at $target, not $GITHUB_SHA, which was built and attested" >&2
+            exit 1
+          fi
           scripts/release-notes.sh "$TAG" > "$RUNNER_TEMP/notes.md"
           gh release create "$TAG" --verify-tag --title "SnapHop Maps CLI ${TAG#v}" --notes-file "$RUNNER_TEMP/notes.md" \
             dist/snaphop-maps-* dist/SHA256SUMS

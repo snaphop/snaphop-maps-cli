@@ -10,7 +10,8 @@ import (
 	"path/filepath"
 )
 
-// Write puts data in the file at path, readable as perm says.
+// Write puts data in the file at path, readable as perm says less the process's umask, as a file
+// os.WriteFile creates would be.
 func Write(path string, data []byte, perm os.FileMode) error {
 	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
@@ -25,14 +26,11 @@ func WriteIn(root *os.Root, name string, data []byte, perm os.FileMode) error {
 	suffix := make([]byte, 8)
 	_, _ = rand.Read(suffix)
 	temporary := name + ".tmp-" + hex.EncodeToString(suffix)
-	file, err := root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	file, err := root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
 		return err
 	}
 	_, err = file.Write(data)
-	if err == nil {
-		err = file.Chmod(perm)
-	}
 	if err == nil {
 		err = file.Sync()
 	}

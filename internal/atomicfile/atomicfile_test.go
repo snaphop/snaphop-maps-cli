@@ -87,13 +87,13 @@ func TestWriteInCannotLeaveItsRoot(t *testing.T) {
 
 func TestWriteReportsEachFailure(t *testing.T) {
 	t.Parallel()
-	cases := map[string]func(dir string) string{
+	cases := map[string]func(t *testing.T, dir string) string{
 		// No directory to write in.
-		"no directory": func(dir string) string { return filepath.Join(dir, "missing", "file") },
+		"no directory": func(_ *testing.T, dir string) string { return filepath.Join(dir, "missing", "file") },
 		// A name the file system takes, but not with the temporary file's suffix added.
-		"name too long": func(dir string) string { return filepath.Join(dir, strings.Repeat("c", 240)) },
+		"name too long": func(_ *testing.T, dir string) string { return filepath.Join(dir, strings.Repeat("c", 240)) },
 		// A directory in the way, which a file cannot be renamed over.
-		"directory in the way": func(dir string) string {
+		"directory in the way": func(t *testing.T, dir string) string {
 			if err := os.MkdirAll(filepath.Join(dir, "occupied", "child"), 0o700); err != nil {
 				t.Fatal(err)
 			}
@@ -104,7 +104,7 @@ func TestWriteReportsEachFailure(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
-			if err := Write(path(dir), []byte("x"), 0o600); err == nil {
+			if err := Write(path(t, dir), []byte("x"), 0o600); err == nil {
 				t.Fatal("no error")
 			}
 			if leftovers, _ := filepath.Glob(filepath.Join(dir, "*.tmp-*")); len(leftovers) != 0 {

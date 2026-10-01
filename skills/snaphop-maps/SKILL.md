@@ -26,9 +26,10 @@ the next step.
    ```
 
    The API key it returns is the account's only credential, and the service shows it only once. The CLI keeps it
-   in a credentials file that only the user can read, and uses it for every later command. Never repeat the key to
-   the user, write it into a file or put it in a command line unless they ask. Do not register again when an
-   account is already kept: `ACCOUNT_ALREADY_KEPT` means use the one you have.
+   in a credentials file that only the user can read, before it prints it, and uses it for every later command.
+   Never repeat the key to the user, write it into a file or put it in a command line unless they ask, or unless
+   the exit status is 6 (below). Do not register again when an account is already kept: `ACCOUNT_ALREADY_KEPT`
+   means use the one you have.
 
 ## Make a map
 
@@ -53,8 +54,9 @@ snaphop-maps create-map --name "Coffee in Lisbon" --style positron \
   opening view: `--view '{"center": [-9.14, 38.71], "zoom": 13}'`. `--controls '{"cooperativeGestures": true}'`
   makes a page scroll past an embedded map until the reader uses two fingers or a modifier key.
 - A long marker list is easier to pass from a file, `--markers @markers.json`, or from standard input,
-  `--markers -`.
-- `--publish=false` keeps the map a draft, and `snaphop-maps publish-map MAP_ID` publishes it later.
+  `--markers -`. Either may hold up to 8 MiB (`INPUT_TOO_LARGE` beyond that).
+- `--publish=false` keeps the map a draft, and `snaphop-maps publish-map MAP_ID` publishes it later. A switch takes
+  its value after `=`: `--publish false` is refused, since `false` would be read as the map's id.
 
 ## Change, publish and withdraw
 
@@ -100,6 +102,9 @@ snaphop-maps rollback-map MAP_ID --release 1
 - The key expires at `expiresAt`. A warning `API_KEY_EXPIRING` on stderr means run `snaphop-maps replace-key`, which
   keeps the new key in place of the old one. The old key works until the new one is first used, so if the answer is
   lost, run `replace-key` again.
+- `$SNAPHOP_MAPS_API_KEY` is only sent to `$SNAPHOP_MAPS_URL`, or to https://maps.snaphop.ai when that is not set;
+  `--url` alone never sends it elsewhere. Once `replace-key` has replaced the key it holds, the kept key is sent
+  instead, with the warning `ENVIRONMENT_KEY_REPLACED`: tell the user to unset the variable.
 
 ## Exit statuses and errors
 
@@ -111,7 +116,8 @@ snaphop-maps rollback-map MAP_ID --release 1
 | 3 | The service refused and changed nothing. | Act on `error.code` and `hint`. |
 | 4 | The exchange failed. | If `error.outcomeKnown` is not true, the request may have been carried out. Follow `hint` before repeating. |
 | 5 | The map was saved, but publishing it was refused. | stdout holds the map, with `publicationError`. |
-| 6 | A new key was issued but not kept. | The key on stdout is its only copy. Tell the user to keep it safe. |
+| 6 | A new key was issued but not kept. | The key on stdout is its only copy. This once, give it to the user to keep somewhere safe, such as a password manager, and fix what `error.message` names. |
+| 7 | The command did its part, but stdout could not take the answer. | `hint` says what became of it, such as whether a new key is kept. Do not repeat a change before checking it. |
 
 Refusals you will meet:
 
@@ -122,8 +128,9 @@ Refusals you will meet:
 - `DRAFT_CHANGED`: run `get-map` again and redo the change.
 - `TOO_MANY_REQUESTS`: wait and try again later.
 - `MAP_LIMIT_REACHED`: the workspace is full. Offer to withdraw a map the user no longer needs.
-- `API_KEY_INVALID`: the key is expired or revoked. Check `snaphop-maps credentials`. If there is no newer key,
-  register again with `--overwrite`, which starts a new account.
+- `API_KEY_INVALID`: the key is expired or revoked. Check `snaphop-maps credentials`. If `hint` says another key is
+  kept, use that one. Only if there is no newer key, register again with `--overwrite`, which starts a new account
+  and replaces the kept key.
 
 Never repeat `create-map` after a failed exchange without first running `list-maps` and looking for the map by name.
 Otherwise the user may end up with two maps.

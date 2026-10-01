@@ -38,6 +38,8 @@ type command struct {
 	Example     string     `json:"example"`
 	// run is a command that is no tool call.
 	run func(*invocation) int
+	// offline is a command that reaches no service, and so reads neither --url nor --timeout.
+	offline bool
 }
 
 var (
@@ -87,7 +89,7 @@ func definitionFlags(nameRequired bool) []flagSpec {
 }
 
 func commands() []*command {
-	return []*command{
+	table := []*command{
 		{
 			Name: "register-agent", Tool: "register_agent",
 			Summary: "Open an account; keeps its API key",
@@ -216,11 +218,12 @@ func commands() []*command {
 			Example: "snaphop-maps replace-key",
 		},
 		{
-			Name: "call", Positional: "tool",
+			Name: "call", Positional: "tool", NeedsKey: true,
 			Summary: "Call any tool by name with JSON arguments",
 			Description: "Calls one tool of the service by its MCP name with --args as its arguments, and answers as the " +
 				"named commands do, keeping a key that register_agent or replace_key returns. For a tool this build " +
-				"has no command for yet; `snaphop-maps tools` lists them all.",
+				"has no command for yet; `snaphop-maps tools` lists them all. It sends the key as the named commands do, " +
+				"except to register_agent.",
 			Flags:   []flagSpec{argsFlag, yesFlag, noSaveFlag, overwriteFlag},
 			Example: `snaphop-maps call get_map --args '{"id": "MAP_ID"}'`,
 			run:     runCall,
@@ -242,9 +245,9 @@ func commands() []*command {
 				{Name: "output", Kind: kindString,
 					Description: "For pack: the zip file to write. Defaults to " + defaultSkillZip + "."},
 			},
-			ReadOnly: true,
-			Example:  "snaphop-maps skill install --client claude",
-			run:      runSkill,
+			Example: "snaphop-maps skill install --client claude",
+			run:     runSkill,
+			offline: true,
 		},
 		{
 			Name: "tools", ReadOnly: true,
@@ -281,6 +284,7 @@ func commands() []*command {
 			Description: "Answers this program's commands, flags, environment, output and exit statuses as one JSON document, for an agent to read instead of the help.",
 			Example:     "snaphop-maps schema",
 			run:         runSchema,
+			offline:     true,
 		},
 		{
 			Name: "version", ReadOnly: true,
@@ -288,6 +292,7 @@ func commands() []*command {
 			Description: "Answers this program's version and the MCP protocol version it speaks.",
 			Example:     "snaphop-maps version",
 			run:         runVersion,
+			offline:     true,
 		},
 		{
 			Name: "help", ReadOnly: true, Positional: "command",
@@ -295,8 +300,15 @@ func commands() []*command {
 			Description: "Explains the program, or with a command's name that command, in text.",
 			Example:     "snaphop-maps help create-map",
 			run:         runHelp,
+			offline:     true,
 		},
 	}
+	for _, cmd := range table {
+		if cmd.Flags == nil {
+			cmd.Flags = []flagSpec{} // an empty list in the schema, not null
+		}
+	}
+	return table
 }
 
 // globalFlags are taken by every command.
@@ -310,7 +322,7 @@ var globalFlags = []flagSpec{
 	{Name: "timeout", Kind: kindDuration,
 		Description: "How long to wait for an answer, as a Go duration. Defaults to 60s; a publication takes 5 to 10 seconds."},
 	{Name: "pretty", Kind: kindLocal,
-		Description: "Indent the JSON written."},
+		Description: "Indent the JSON written to standard output. Standard error keeps one JSON document per line."},
 }
 
 type environmentVariable struct {
@@ -337,6 +349,7 @@ const (
 	exitTransport   = 4
 	exitUnpublished = 5
 	exitNotSaved    = 6
+	exitUnwritten   = 7
 )
 
 var exitStatuses = []exitStatus{
@@ -347,4 +360,5 @@ var exitStatuses = []exitStatus{
 	{exitTransport, "The exchange failed. Unless error.outcomeKnown is true, the request may have been carried out; error.hint says what to check before repeating it."},
 	{exitUnpublished, "The map was saved but its publication was refused. Standard output holds the map, with publicationError."},
 	{exitNotSaved, "A new API key was issued but not kept in the credentials file. Standard output holds it, and is its only copy: keep it."},
+	{exitUnwritten, "The answer could not be written to standard output, although the command did its part. error.hint says what became of it, such as whether a new key is kept."},
 }

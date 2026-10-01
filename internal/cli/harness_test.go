@@ -124,6 +124,8 @@ type harness struct {
 	configDir func() (string, error)
 	homeDir   func() (string, error)
 	http      *http.Client
+	// stdout, when set, takes standard output instead of the outcome.
+	stdout io.Writer
 }
 
 func newHarness(t *testing.T, s *service) *harness {
@@ -147,10 +149,14 @@ type outcome struct {
 func (h *harness) run(args ...string) outcome {
 	h.t.Helper()
 	var stdout, stderr bytes.Buffer
+	var out io.Writer = &stdout
+	if h.stdout != nil {
+		out = h.stdout
+	}
 	code := Run(context.Background(), Env{
 		Args:      args,
 		Stdin:     h.stdin,
-		Stdout:    &stdout,
+		Stdout:    out,
 		Stderr:    &stderr,
 		Getenv:    func(name string) string { return h.vars[name] },
 		ConfigDir: h.configDir,
@@ -224,11 +230,17 @@ func (o outcome) failure(t *testing.T, code int, errorCode string) Problem {
 	return p
 }
 
-// success checks an outcome succeeded and decodes its standard output.
+// success checks an outcome succeeded, with nothing but warnings on standard error, and decodes its
+// standard output.
 func (o outcome) success(t *testing.T) map[string]any {
 	t.Helper()
 	if o.code != exitOK {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", o.code, o.stdout, o.stderr)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(o.stderr), "\n") {
+		if line != "" {
+			problem(t, line, "warning")
+		}
 	}
 	return decode(t, o.stdout)
 }
@@ -245,6 +257,11 @@ func decode(t *testing.T, text string) map[string]any {
 type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("stdin closed") }
+
+// failingWriter is standard output whose reader has gone.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
 
 // never is a service that fails a test that reaches it.
 func never(t *testing.T) func(request) answer {

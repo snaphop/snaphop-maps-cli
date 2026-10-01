@@ -20,6 +20,9 @@ var version = "dev"
 var exit = os.Exit
 
 func main() {
+	// A reader of standard output that goes away must not end the process before it has done its part,
+	// such as keeping a key it was issued: writing then fails, and the failure is reported.
+	signal.Ignore(syscall.SIGPIPE)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := cli.Run(ctx, cli.Env{
 		Args:      os.Args[1:],

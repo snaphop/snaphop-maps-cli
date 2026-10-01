@@ -66,11 +66,23 @@ func TestEveryToolIsACommand(t *testing.T) {
 		}
 		flags := map[string]flagSpec{}
 		for _, spec := range cmd.Flags {
-			if spec.Argument != "" {
-				flags[spec.Argument] = spec
-				if _, known := listedTool.InputSchema.Properties[spec.Argument]; !known {
-					t.Errorf("%s --%s sends %s, which %s does not take", cmd.Name, spec.Name, spec.Argument, listedTool.Name)
-				}
+			if spec.Argument == "" {
+				continue
+			}
+			flags[spec.Argument] = spec
+			property, known := listedTool.InputSchema.Properties[spec.Argument]
+			if !known {
+				t.Errorf("%s --%s sends %s, which %s does not take", cmd.Name, spec.Name, spec.Argument, listedTool.Name)
+				continue
+			}
+			// The flag sends the JSON type the argument is.
+			var declared struct {
+				Type any `json:"type"`
+			}
+			_ = json.Unmarshal(property, &declared)
+			sends := map[kind][]string{kindString: {"string"}, kindInteger: {"integer"}, kindBool: {"boolean"}, kindJSON: {"array", "object"}}[spec.Kind]
+			if !typeAmong(declared.Type, sends) {
+				t.Errorf("%s --%s is a %s flag; %s's %s is %v", cmd.Name, spec.Name, spec.Kind, listedTool.Name, spec.Argument, declared.Type)
 			}
 		}
 		for property := range listedTool.InputSchema.Properties {
@@ -94,6 +106,25 @@ func TestEveryToolIsACommand(t *testing.T) {
 	for name := range byTool {
 		t.Errorf("command for %s, which the service does not list", name)
 	}
+}
+
+// typeAmong says whether a JSON Schema type, one name or a list of them, includes one of names.
+func typeAmong(declared any, names []string) bool {
+	var types []any
+	switch value := declared.(type) {
+	case string:
+		types = []any{value}
+	case []any:
+		types = value
+	}
+	for _, t := range types {
+		for _, name := range names {
+			if t == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestCommandsCallTheirTools runs each tool's command and checks the one request it sends.
@@ -243,17 +274,21 @@ func TestLocalRefusalsSendNothing(t *testing.T) {
 func TestServiceAddresses(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"HTTPS://Maps.SnapHop.AI/":    "https://maps.snaphop.ai",
-		"https://maps.snaphop.ai":     "https://maps.snaphop.ai",
-		"https://example.com/maps/":   "https://example.com/maps",
-		"http://localhost:8080":       "http://localhost:8080",
-		"http://LOCALHOST:8080":       "http://localhost:8080",
-		"http://127.0.0.1:8080/":      "http://127.0.0.1:8080",
-		"http://[::1]:8080":           "http://[::1]:8080",
-		"https://maps.snaphop.ai:443": "https://maps.snaphop.ai:443",
+		"HTTPS://Maps.SnapHop.AI/":     "https://maps.snaphop.ai",
+		"https://maps.snaphop.ai":      "https://maps.snaphop.ai",
+		"https://example.com/maps/":    "https://example.com/maps",
+		"http://localhost:8080":        "http://localhost:8080",
+		"http://LOCALHOST:8080":        "http://localhost:8080",
+		"http://127.0.0.1:8080/":       "http://127.0.0.1:8080",
+		"http://[::1]:8080":            "http://[::1]:8080",
+		"https://maps.snaphop.ai:443":  "https://maps.snaphop.ai",
+		"https://Maps.SnapHop.ai:443/": "https://maps.snaphop.ai",
+		"http://[::1]:80":              "http://[::1]",
+		"https://example.com:8443":     "https://example.com:8443",
+		"http://localhost:443":         "http://localhost:443",
 	}
 	for raw, want := range cases {
-		if got, err := serviceURL(raw); err != nil || got != want {
+		if got, err := serviceURL(raw, "--url"); err != nil || got != want {
 			t.Errorf("serviceURL(%q) = %q, %v; want %q", raw, got, err, want)
 		}
 	}
@@ -616,25 +651,36 @@ func TestAnEnvironmentKeyOnlyGoesToItsService(t *testing.T) {
 }
 
 // TestNoErrorEchoesAKey covers the ways a key could reach standard error: a mistyped flag that makes
-// it the command's name, a stray argument, and an error body that repeats the request's header.
+// it the command's name, a stray argument, and an error body that repeats the request's header, whole
+// or cut short.
 func TestNoErrorEchoesAKey(t *testing.T) {
 	t.Parallel()
 	echo := func(r request) answer {
 		return answer{status: 502, body: `{"debug": {"authorization": "` + r.Auth + `", "arguments": ` + r.Raw + `}}`}
 	}
+	// A key of the service's own shape, which no flag or variable of the run holds.
+	unknown := "sh_agent_" + strings.Repeat("Q", 43)
 	cases := []struct {
-		name    string
-		respond func(request) answer
-		env     string
-		kept    string
-		args    []string
-		code    string
+		name     string
+		respond  func(request) answer
+		env      string
+		kept     string
+		args     []string
+		exit     int
+		code     string
+		redacted bool
 	}{
-		{"a mistyped flag", nil, "shk_environment_key", "", []string{"--apikey", "shk_environment_key", "list-maps"}, "UNKNOWN_COMMAND"},
-		{"a stray argument", nil, "", "", []string{"list-maps", "shk_flag_key", "--api-key", "shk_flag_key"}, "UNEXPECTED_ARGUMENT"},
-		{"a header echoed back", echo, "", "shk_kept_key", []string{"list-maps"}, "HTTP_502"},
-		{"an argument echoed back", echo, "", "", []string{"list-maps", "--args", `{"apiKey": "shk_argument_key"}`}, "HTTP_502"},
-		{"a body after a warning", func(request) answer { return answer{status: 404, body: "shk_kept_key"} }, "", "shk_kept_key", []string{"list-maps"}, "HTTP_404"},
+		{"a mistyped flag", nil, "shk_environment_key", "", []string{"--apikey", "shk_environment_key", "list-maps"}, exitUsage, "INVALID_FLAG", false},
+		{"a mistyped flag with an unknown key", nil, "", "", []string{"--apikey=" + unknown, "list-maps"}, exitUsage, "INVALID_FLAG", false},
+		{"an unknown key as the command", nil, "", "", []string{unknown}, exitUsage, "UNKNOWN_COMMAND", true},
+		{"a stray argument", nil, "", "", []string{"list-maps", "shk_flag_key", "--api-key", "shk_flag_key"}, exitUsage, "UNEXPECTED_ARGUMENT", true},
+		{"an unknown key as a stray argument", nil, "", "", []string{"list-maps", unknown}, exitUsage, "UNEXPECTED_ARGUMENT", true},
+		{"a header echoed back", echo, "", "shk_kept_key", []string{"list-maps"}, exitTransport, "HTTP_502", true},
+		{"an argument echoed back", echo, "", "", []string{"list-maps", "--args", `{"apiKey": "shk_argument_key"}`}, exitTransport, "HTTP_502", true},
+		{"a body after a warning", func(request) answer { return answer{status: 404, body: "shk_kept_key"} }, "", "shk_kept_key", []string{"list-maps"}, exitTransport, "HTTP_404", true},
+		{"a key where the body is cut", func(r request) answer {
+			return answer{status: 502, body: strings.Repeat("x", 180) + " " + strings.TrimPrefix(r.Auth, "Bearer ")}
+		}, "", "shk_kept_key_" + strings.Repeat("K", 40), []string{"list-maps"}, exitTransport, "HTTP_502", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -649,8 +695,9 @@ func TestNoErrorEchoesAKey(t *testing.T) {
 				h.keep(credentials.Account{APIKey: tc.kept, ExpiresAt: "2026-09-29T00:00:00Z"})
 			}
 			o := h.run(tc.args...)
-			o.failure(t, o.code, tc.code)
-			if strings.Contains(o.stderr, "shk_") || !strings.Contains(o.stderr, "[REDACTED]") {
+			o.failure(t, tc.exit, tc.code)
+			if strings.Contains(o.stderr, "shk_") || strings.Contains(o.stderr, "sh_agent_") || strings.Contains(o.stderr, "QQQQ") ||
+				strings.Contains(o.stderr, "[REDACTED]") != tc.redacted {
 				t.Fatalf("stderr = %s", o.stderr)
 			}
 		})
@@ -663,5 +710,137 @@ func TestAShortValueIsNotTakenForAKey(t *testing.T) {
 	h.vars["SNAPHOP_MAPS_API_KEY"] = "key"
 	if p := h.run("list-maps").failure(t, exitTransport, "HTTP_404"); !strings.Contains(p.Message, "Check the key") {
 		t.Fatalf("error = %+v", p)
+	}
+}
+
+// TestCommandLinesThatWouldSendTheWrongThing are mistakes that once sent something other than what was
+// meant: a switch given its value after a space, an id given twice, a JSON value with more after it,
+// and apiKey given as something other than a key.
+func TestCommandLinesThatWouldSendTheWrongThing(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		args []string
+		code string
+		says string
+	}{
+		{"a switch's value after a space", []string{"update-map", "--id", "m1", "--name", "X", "--publish", "false"}, "INVALID_FLAG", "--publish=false"},
+		{"a switch's value after the id", []string{"update-map", "m1", "--publish", "FALSE"}, "INVALID_FLAG", "--publish=false"},
+		{"a confirmation's value", []string{"withdraw-map", "m1", "--yes", "true"}, "INVALID_FLAG", "--yes=true"},
+		{"the id twice", []string{"withdraw-map", "--id", "keep-me", "--yes", "other"}, "CONFLICTING_ARGUMENT", `"keep-me"`},
+		{"a stray bracket", []string{"create-map", "--name", "N", "--markers", `[{"position": [1, 2], "title": "T"}]]`}, "INVALID_JSON", "more follows"},
+		{"a stray brace", []string{"call", "list_maps", "--args", `{"style": "dark"}}`}, "INVALID_JSON", "more follows"},
+		{"apiKey null", []string{"list-maps", "--args", `{"apiKey": null}`}, "INVALID_FLAG", "apiKey"},
+		{"apiKey empty", []string{"list-maps", "--args", `{"apiKey": ""}`}, "INVALID_FLAG", "apiKey"},
+		{"a command flag before the command", []string{"--name", "N", "create-map"}, "INVALID_FLAG", "--name is not a flag"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, newService(t, never(t)))
+			h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+			if p := h.run(tc.args...).failure(t, exitUsage, tc.code); !strings.Contains(p.Message+p.Hint, tc.says) {
+				t.Fatalf("error = %+v, want %q", p, tc.says)
+			}
+		})
+	}
+}
+
+func TestLinesThatMeanWhatTheySay(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		args      []string
+		arguments string
+	}{
+		{[]string{"get-map", "m1", "--id", "m1"}, `{"id":"m1"}`},
+		{[]string{"update-map", "m1", "--publish=false"}, `{"id":"m1","publish":false}`},
+		{[]string{"--url=" + "SERVICE", "--timeout=5s", "list-maps"}, `{}`},
+		{[]string{"create-map", "--name", "true"}, `{"name":"true"}`},
+		{[]string{"get-map", "true"}, `{"id":"true"}`},
+		{[]string{"get-map", "--timeout", "5s", "false"}, `{"id":"false"}`},
+		{[]string{"update-map", "--publish=true", "false"}, `{"id":"false","publish":true}`},
+		{[]string{"--help", "get-map", "m1"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			t.Parallel()
+			s := newService(t, func(request) answer { return tool(map[string]any{"ok": true}) })
+			h := newHarness(t, s)
+			h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+			args := append([]string{}, tc.args...)
+			for i, arg := range args {
+				args[i] = strings.ReplaceAll(arg, "SERVICE", s.server.URL)
+			}
+			o := h.run(args...)
+			if tc.arguments == "" {
+				if o.code != exitOK || !strings.Contains(o.stdout, "Usage: snaphop-maps get-map") {
+					t.Fatalf("exit %d, stdout %s, stderr %s", o.code, o.stdout, o.stderr)
+				}
+				return
+			}
+			o.success(t)
+			if r := s.only(); r.Raw != tc.arguments {
+				t.Fatalf("sent %s, want %s", r.Raw, tc.arguments)
+			}
+		})
+	}
+}
+
+// TestLocalCommandsNeedNoService: help, version, schema and skill read neither --url nor --timeout,
+// so a service address the environment gets wrong does not stop them.
+func TestLocalCommandsNeedNoService(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, nil)
+	h.vars["SNAPHOP_MAPS_URL"] = "http://192.168.1.10:8084"
+	for _, args := range [][]string{{"help"}, {"help", "get-map"}, {"version"}, {"schema"}, {"skill"}, {"version", "--timeout", "soon"}} {
+		if o := h.run(args...); o.code != exitOK {
+			t.Fatalf("%v: exit %d, stderr %s", args, o.code, o.stderr)
+		}
+	}
+	p := h.run("list-maps").failure(t, exitUsage, "INVALID_URL")
+	if !strings.Contains(p.Message, "$SNAPHOP_MAPS_URL") || strings.Contains(p.Message, "--url") || !strings.Contains(p.Hint, "$SNAPHOP_MAPS_URL") {
+		t.Fatalf("error = %+v", p)
+	}
+}
+
+// TestStandardErrorIsOneDocumentPerLine, as the schema promises, even with --pretty.
+func TestStandardErrorIsOneDocumentPerLine(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) }))
+	h.keep(credentials.Account{APIKey: "shk_kept", ExpiresAt: "2026-10-01T00:00:00Z"})
+	o := h.run("list-maps", "--pretty")
+	if lines := strings.Split(strings.TrimSpace(o.stderr), "\n"); len(lines) != 1 || !strings.Contains(o.stdout, "\n  ") {
+		t.Fatalf("stdout %q, stderr %q", o.stdout, o.stderr)
+	}
+	o = h.run("get-map", "--pretty")
+	if lines := strings.Split(strings.TrimSpace(o.stderr), "\n"); o.code != exitUsage || len(lines) != 1 {
+		t.Fatalf("stderr %q", o.stderr)
+	}
+}
+
+// TestAnUnknownToolIsNotCalledSafeToRepeat: `call` exists for tools newer than this build, which may
+// change something.
+func TestAnUnknownToolIsNotCalledSafeToRepeat(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, newService(t, func(request) answer { return answer{status: 504} }))
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+	p := h.run("call", "delete_workspace", "--yes").failure(t, exitTransport, "HTTP_504")
+	if strings.Contains(p.Hint, "safe to repeat") || !strings.Contains(p.Hint, "may have been carried out") {
+		t.Fatalf("hint = %q", p.Hint)
+	}
+	if p := h.run("call", "list_maps").failure(t, exitTransport, "HTTP_504"); !strings.Contains(p.Hint, "safe to repeat") {
+		t.Fatalf("hint = %q", p.Hint)
+	}
+}
+
+// TestA401WithoutAKeyIsNotTheKeysRefusal: nothing sent a key, so something else refused.
+func TestA401WithoutAKeyIsNotTheKeysRefusal(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, newService(t, func(request) answer { return answer{status: http.StatusUnauthorized} }))
+	for _, args := range [][]string{{"ping"}, {"register-agent", "--name", "A", "--no-save"}} {
+		p := h.run(args...).failure(t, exitTransport, "HTTP_401")
+		if p.OutcomeKnown == nil || !*p.OutcomeKnown || strings.Contains(p.Hint, "register") {
+			t.Fatalf("%v: error = %+v", args, p)
+		}
 	}
 }

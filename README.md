@@ -45,7 +45,8 @@ sha256sum -c SHA256SUMS --ignore-missing
 gh attestation verify snaphop-maps-linux-amd64 --repo snaphop/snaphop-maps-cli
 ```
 
-To build every platform yourself, run `make -j dist`. The binaries go in `dist/`, next to their `SHA256SUMS`.
+To build every platform yourself, run `make -j dist`. The binaries go in `dist/`, rebuilt each time, next to their
+`SHA256SUMS`.
 
 ## Use
 
@@ -107,7 +108,8 @@ An assistant without a shell can use the same service as an MCP server at `https
 ## Output and exit statuses
 
 On success, standard output holds one JSON document: the tool's structured result, exactly as the service returned
-it. `--pretty` indents it. On failure, standard error holds `{"error": {"code", "message", "hint", ...}}`. `code` is
+it. `--pretty` indents it. On failure, standard error holds `{"error": {"code", "message", "hint", ...}}`, one JSON
+document per line, `--pretty` or not. `code` is
 the service's own code when the service refused, and `hint` is the next step to take. A warning, such as a key
 about to expire, is `{"warning": {...}}` on standard error and does not change the exit status.
 
@@ -120,20 +122,23 @@ about to expire, is `{"warning": {...}}` on standard error and does not change t
 | 4      | The exchange failed. Unless `error.outcomeKnown` is true, the request may still have been carried out, and `error.hint` says what to check before repeating it. |
 | 5      | The map was saved but its publication was refused. Standard output holds the map, with `publicationError`. |
 | 6      | A new API key was issued but could not be kept. Standard output holds it, and it is the only copy.       |
+| 7      | The command did its part, but standard output could not take the answer. `error.hint` says what became of it, such as whether a new key is kept. |
 
 `snaphop-maps schema` returns all of this, every command and every flag as JSON.
 
 ## Credentials
 
 The key the service issues is the account's only credential, and the service shows it once. `register-agent` and
-`replace-key` keep it in `snaphop-maps/credentials.json` under the user's configuration directory. The file is
-created with mode `0600`, written whole, synced and renamed into place, under a lock so that commands run at the
-same time never lose each other's keys. It holds one account per service address, and a key is only ever sent to
-the service that issued it.
+`replace-key` keep it in `snaphop-maps/credentials.json` under the user's configuration directory, before they print
+it, and refuse to send anything when they could not keep it (ADR 0005). The file is created with mode `0600`,
+written whole, synced and renamed into place, under a lock so that commands run at the same time never lose each
+other's keys. It holds one account per service address, and a key is only ever sent to the service that issued it.
 
 A command sends the first key it finds: `--api-key`, then `$SNAPHOP_MAPS_API_KEY`, then the file. The key goes in
 an `Authorization` bearer header. `$SNAPHOP_MAPS_API_KEY` is only sent to the service the environment names,
 `$SNAPHOP_MAPS_URL` or else `https://maps.snaphop.ai`, so `--url` alone cannot send it anywhere else (ADR 0004).
+Once `replace-key` has replaced the key the variable holds, the kept key is sent instead, with the warning
+`ENVIRONMENT_KEY_REPLACED`.
 A key never appears in an error or a warning: one echoed back, by a mistyped command line or by an error body, is
 shown as `[REDACTED]`. `register-agent` will not replace an account already kept for the same service
 unless given `--overwrite`. `replace-key` only replaces the key it was called with. A replaced key keeps working
@@ -145,8 +150,8 @@ until the new key is first used, so an answer lost on the way costs nothing: run
 | `SNAPHOP_MAPS_API_KEY`     | the key kept for the service; only sent to `SNAPHOP_MAPS_URL`'s service |
 | `SNAPHOP_MAPS_CREDENTIALS` | `<config dir>/snaphop-maps/credentials.json` |
 
-Plain `http` is refused except to this machine (`localhost`, `127.0.0.1`, `::1`), so a key is never sent in the
-clear. The CLI follows no redirects.
+Plain `http` is refused except to this machine (`localhost` or a loopback address, such as `127.0.0.1` or `::1`), so
+a key is never sent in the clear. The CLI follows no redirects.
 
 ## Develop
 

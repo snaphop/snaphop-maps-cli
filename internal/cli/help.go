@@ -80,15 +80,13 @@ func writeFlags(b *strings.Builder, flags []flagSpec) {
 
 func runHelp(inv *invocation) int {
 	if len(inv.positional) == 0 {
-		fmt.Fprint(inv.env.Stdout, overview())
-		return exitOK
+		return inv.text(overview())
 	}
 	cmd := lookup(inv.positional[0])
 	if cmd == nil {
 		return inv.usage("UNKNOWN_COMMAND", fmt.Sprintf("There is no command %q.", inv.positional[0]), "Run `snaphop-maps help` for every command.")
 	}
-	fmt.Fprint(inv.env.Stdout, commandHelp(cmd))
-	return exitOK
+	return inv.text(commandHelp(cmd))
 }
 
 func runSchema(inv *invocation) int {
@@ -109,8 +107,7 @@ func runSchema(inv *invocation) int {
 			"secrets": "register-agent and replace-key print the new apiKey on standard output and keep it in the credentials file; no other output holds a key.",
 		},
 	})
-	inv.write(inv.env.Stdout, document)
-	return exitOK
+	return inv.answer(document)
 }
 
 func runVersion(inv *invocation) int {
@@ -119,8 +116,7 @@ func runVersion(inv *invocation) int {
 		"version":         inv.env.Version,
 		"protocolVersion": mcp.ProtocolVersion,
 	})
-	inv.write(inv.env.Stdout, document)
-	return exitOK
+	return inv.answer(document)
 }
 
 // Version is the program's version: the one set at build time, or else the module version that
