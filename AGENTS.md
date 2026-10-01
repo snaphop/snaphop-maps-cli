@@ -20,8 +20,9 @@ Core invariants:
   stable `code` and a `hint`, and the exit status comes from the table in `commands.go`. Never print prose to
   stdout, never change what an existing exit status means, and never put a key in any output except the answer
   that issued it.
-- **Keys.** A key is sent only as a bearer header, and only to the service address it was kept under. Plain http
-  is refused except to loopback, and redirects are never followed. The credentials file is `0600`, written whole
+- **Keys.** A key the CLI finds is sent only as a bearer header, and a kept key only to the service address it was
+  kept under (a key the caller writes into `--args` goes as that argument). Plain http is refused except to
+  loopback, and redirects are never followed. The credentials file is `0600`, written whole
   and renamed into place. No command may lose a kept key: `register-agent` needs `--overwrite` to replace an
   account, and `replace-key` replaces only the key it was called with.
 - **The skill is part of the interface.** `skills/snaphop-maps/SKILL.md` is the Agent Skill every assistant reads

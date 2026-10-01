@@ -36,9 +36,9 @@ fail the call.
 
 ## Left out
 
-- **The HTTP API's other routes**, such as releases, rollback, activity and the account, which no MCP tool offers.
-  Adding them would go beyond parity with the MCP server. `call` will reach them once the server adds tools for
-  them.
+- **The HTTP API's other routes**, such as releases, rollback, activity and the account, which no MCP tool offered
+  then. Adding them would go beyond parity with the MCP server. `call` will reach them once the server adds tools
+  for them. The server has since added tools for these four (its ADR 0026), and 0.2.0 gave each a command.
 - **Client-side validation** beyond what makes a request: the service decides, and its `MAP_INVALID` names every
   refused field.
 - **Automatic retries.** Repeating `create_map` can make two maps, and repeating `publish_map` adds a release, so

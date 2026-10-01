@@ -68,6 +68,12 @@ section with a `### Security` subsection is a security release, and its notes sa
   status 2, not the help with exit status 0.
 - An error body with a byte that is not UTF-8, such as a page in Latin-1, lost everything from that byte on; each
   such byte is now shown as U+FFFD.
+- A key given as `--args '{"apiKey": ...}'` that the service refused got the advice to register again with
+  `--overwrite`, which would replace the key kept for the service. Its hint now points to the kept key, as for a
+  refused `--api-key` or `$SNAPHOP_MAPS_API_KEY`.
+- The documentation and `schema` now say that a key written into `--args` goes as that argument rather than a
+  header, that `$SNAPHOP_MAPS_API_KEY` is passed over once the kept key replaced it, that a new key is kept before
+  it is printed, and that a refusal without a code of its own is `REFUSED`. `SKILL.md` covers `API_KEY_EXPIRED`.
 - `make dist` rebuilt nothing once `dist/` held a file; it now rebuilds every file. The coverage floor counted a
   rounded percentage and passed at 99.95%; it now counts statements. macOS and Windows now run the coverage floor
   too, and `scripts/ci-local.sh` checks staged changes for whitespace errors.

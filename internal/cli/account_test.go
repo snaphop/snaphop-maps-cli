@@ -429,10 +429,17 @@ func TestARefusedKeyNeverLeadsToLosingTheKeptOne(t *testing.T) {
 	for name, set := range map[string]func(h *harness) []string{
 		"environment": func(h *harness) []string { h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_other"; return nil },
 		"flag":        func(*harness) []string { return []string{"--api-key", "shk_other"} },
+		"arguments":   func(*harness) []string { return []string{"--args", `{"apiKey": "shk_other"}`} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			h := newHarness(t, newService(t, func(request) answer { return answer{status: http.StatusUnauthorized} }))
+			// The service refuses a header's key with a 401, and an argument's key as a tool's refusal.
+			h := newHarness(t, newService(t, func(r request) answer {
+				if r.Auth == "" {
+					return refusal(map[string]any{"error": map[string]any{"code": "API_KEY_INVALID", "message": "unknown"}})
+				}
+				return answer{status: http.StatusUnauthorized}
+			}))
 			h.keep(credentials.Account{APIKey: "shk_kept", ExpiresAt: "2026-09-29T00:00:00Z"})
 			o := h.run(append([]string{"list-maps"}, set(h)...)...)
 			p := o.failure(t, exitRefused, "API_KEY_INVALID")
@@ -442,6 +449,9 @@ func TestARefusedKeyNeverLeadsToLosingTheKeptOne(t *testing.T) {
 			// The kept key is not the one sent, so its expiry is not this command's to warn of.
 			if strings.Contains(o.stderr, "API_KEY_EXPIRED") {
 				t.Fatalf("stderr = %s", o.stderr)
+			}
+			if name == "arguments" {
+				return // credentials takes no --args
 			}
 			if out := h.run(append([]string{"credentials"}, set(h)...)...).success(t); out["sendsKeptKey"] != false || out["account"] == nil {
 				t.Fatalf("credentials = %v", out)

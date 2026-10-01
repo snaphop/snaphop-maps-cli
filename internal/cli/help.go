@@ -104,7 +104,7 @@ func runSchema(inv *invocation) int {
 		"output": map[string]string{
 			"stdout":  "On success, one JSON document: the tool's structured result, exactly as the service gave it.",
 			"stderr":  `On failure, {"error": {"code", "message", "hint", ...}}; a warning is {"warning": {...}}. One JSON document per line.`,
-			"secrets": "register-agent and replace-key print the new apiKey on standard output and keep it in the credentials file; no other output holds a key.",
+			"secrets": "register-agent and replace-key keep the new apiKey in the credentials file, unless given --no-save, and then print it on standard output; no other output holds a key.",
 		},
 	})
 	return inv.answer(document)

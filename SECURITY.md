@@ -18,8 +18,10 @@ observe its arguments and output.
 
 ## Boundaries
 
-- A key MUST only be sent as an `Authorization` bearer header, over https, or over http to a loopback address. The
-  CLI MUST NOT follow redirects, which could carry a request to another host.
+- A key the CLI finds, from `--api-key`, `$SNAPHOP_MAPS_API_KEY` or the credentials file, MUST only be sent as an
+  `Authorization` bearer header. A key the caller writes into a tool's arguments, as `--args '{"apiKey": ...}'`, is
+  sent there, as the tool takes it, and no header goes with it. Either way a key MUST only travel over https, or
+  over http to a loopback address. The CLI MUST NOT follow redirects, which could carry a request to another host.
 - A key kept in the credentials file MUST only be sent to the service address it was kept under. A key from
   `$SNAPHOP_MAPS_API_KEY` MUST only be sent to the service the environment names, `$SNAPHOP_MAPS_URL` or else the
   default, never to one that `--url` alone names (ADR 0004).
@@ -54,9 +56,10 @@ observe its arguments and output.
   (ADR 0002).
 - Tests MUST NOT reach production. Registering agents or publishing maps on production is not a verification step.
 
-`--api-key` is visible to other processes on the same machine. Prefer `$SNAPHOP_MAPS_API_KEY` or the credentials
-file. On a system other than Linux, macOS, the BSDs and Windows the credentials file cannot be locked, and commands
-that keep keys at the same time may lose one.
+`--api-key` and `--args` are visible to other processes on the same machine. Prefer `$SNAPHOP_MAPS_API_KEY` or the
+credentials file. On a system other than Linux, macOS, the BSDs and Windows the credentials file cannot be locked,
+and commands that keep keys at the same time may lose one. On a file system that cannot lock, such as some network
+ones, the file is read without the lock, and `register-agent` and `replace-key` refuse to keep a key there.
 
 ## Supported versions
 

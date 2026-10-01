@@ -42,7 +42,7 @@ Never register agents or publish maps on production to test a change.
    against the [Agent Skills specification](https://agentskills.io/specification), check that it shows every command,
    and run every example in its code blocks. Keep its examples runnable: no placeholders a shell would reject.
 5. **Test everything.** `make check` fails unless every statement is covered. Write table-driven tests with
-   `t.Parallel()` against the fake service in `internal/cli/harness_test.go`, and do not mutate package state. A
+   `t.Parallel()` against the fake service in `internal/cli/harness_test.go`, and do not mutate package state outside `cmd/snaphop-maps/main_test.go`. A
    failure path you cannot reach from a test is a sign the code should be simpler.
 6. **Record it.** Add a line under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md) for anything a user or agent can
    observe, and a decision record in `docs/decisions/` for a material choice.

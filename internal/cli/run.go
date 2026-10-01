@@ -472,7 +472,7 @@ func (inv *invocation) store() (credentials.Store, error) {
 // keyChoice is the key a command sends, where it comes from, and the account kept for the service.
 type keyChoice struct {
 	key    string
-	source string // flag, environment, file or none
+	source string // flag, environment, file, none, or arguments for a key given in --args
 	kept   *credentials.Account
 	path   string
 	// replaced says the environment's key is one that the kept key replaced, and is not sent.
@@ -584,6 +584,10 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 			return inv.usage("INVALID_FLAG", "--args gives apiKey, but not as a key.",
 				"Give apiKey as the key itself, or leave it out to send the key from the environment or the credentials file.")
 		}
+		// The account kept for the service, if the file can be read, so that a refusal of this key does
+		// not advise registering over it.
+		file := inv.kept()
+		inv.choice = keyChoice{key: used, source: "arguments", kept: file.kept, path: file.store.Path}
 	} else if tool != "register_agent" {
 		choice, err := inv.key()
 		if err != nil {
@@ -851,7 +855,7 @@ var refusalHints = map[string]string{
 // so the hint points to that key instead.
 func (inv *invocation) refusalHint(code string) string {
 	if code == "API_KEY_INVALID" && inv.choice.kept != nil && !inv.choice.sendsKept() {
-		given := map[string]string{"flag": "--api-key", "environment": "$SNAPHOP_MAPS_API_KEY"}[inv.choice.source]
+		given := map[string]string{"flag": "--api-key", "environment": "$SNAPHOP_MAPS_API_KEY", "arguments": "the apiKey in --args"}[inv.choice.source]
 		return "The key from " + given + " was refused, but another is kept for " + inv.service + " in " + inv.choice.path +
 			". Leave " + given + " out to send the kept one. Do not register again: that would replace it."
 	}

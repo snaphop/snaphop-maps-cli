@@ -316,7 +316,7 @@ var globalFlags = []flagSpec{
 	{Name: "url", Kind: kindString,
 		Description: "The SnapHop Maps service. Defaults to $SNAPHOP_MAPS_URL, then https://maps.snaphop.ai. Plain http is refused except to this machine."},
 	{Name: "api-key", Kind: kindString,
-		Description: "The API key to send. Defaults to $SNAPHOP_MAPS_API_KEY when --url is the environment's service, then the key kept for --url in the credentials file. A flag is visible to other processes; prefer the file or the environment."},
+		Description: "The API key to send. Defaults to $SNAPHOP_MAPS_API_KEY when --url is the environment's service and the kept key did not replace it, then the key kept for --url in the credentials file. A flag is visible to other processes; prefer the file or the environment."},
 	{Name: "credentials", Kind: kindString,
 		Description: "The credentials file. Defaults to $SNAPHOP_MAPS_CREDENTIALS, then snaphop-maps/credentials.json in the user's configuration directory."},
 	{Name: "timeout", Kind: kindDuration,
@@ -332,7 +332,7 @@ type environmentVariable struct {
 
 var environment = []environmentVariable{
 	{"SNAPHOP_MAPS_URL", "The service, when --url is not given."},
-	{"SNAPHOP_MAPS_API_KEY", "The API key, when --api-key is not given. It takes precedence over the credentials file, and is only sent to $SNAPHOP_MAPS_URL's service, or the default when that is not set: never to another that --url names."},
+	{"SNAPHOP_MAPS_API_KEY", "The API key, when --api-key is not given. It takes precedence over the credentials file unless the key kept there replaced it, and is only sent to $SNAPHOP_MAPS_URL's service, or the default when that is not set: never to another that --url names."},
 	{"SNAPHOP_MAPS_CREDENTIALS", "The credentials file, when --credentials is not given."},
 }
 
@@ -356,7 +356,7 @@ var exitStatuses = []exitStatus{
 	{exitOK, "Done. Standard output holds the answer."},
 	{exitFailure, "This program could not do its own part, such as reading the credentials file. Nothing was sent."},
 	{exitUsage, "The command line is wrong or incomplete. Nothing was sent. error.code says what to change."},
-	{exitRefused, "The service refused the request and changed nothing. error.code is the service's code and error.hint the next step."},
+	{exitRefused, "The service refused the request and changed nothing. error.code is the service's code, or REFUSED when it gave none, and error.hint the next step."},
 	{exitTransport, "The exchange failed. Unless error.outcomeKnown is true, the request may have been carried out; error.hint says what to check before repeating it."},
 	{exitUnpublished, "The map was saved but its publication was refused. Standard output holds the map, with publicationError."},
 	{exitNotSaved, "A new API key was issued but not kept in the credentials file. Standard output holds it, and is its only copy: keep it."},

@@ -11,7 +11,7 @@ metadata:
 
 SnapHop Maps publishes an interactive web map with plain-text markers at a stable link, the **page**, and as HTML to
 embed in any web page. The `snaphop-maps` command drives it. Every command prints one JSON document on stdout. A
-failure prints `{"error": {"code", "message", "hint"}}` on stderr and exits with a nonzero status. Read `hint`: it is
+failure prints `{"error": {"code", "message", "hint", ...}}` on stderr and exits with a nonzero status. Read `hint`: it is
 the next step.
 
 ## Before the first map
@@ -101,7 +101,8 @@ snaphop-maps rollback-map MAP_ID --release 1
   If they need a map for longer, keep the `draft` from `get-map`: `create-map --args` takes it back as it is.
 - The key expires at `expiresAt`. A warning `API_KEY_EXPIRING` on stderr means run `snaphop-maps replace-key`, which
   keeps the new key in place of the old one. The old key works until the new one is first used, so if the answer is
-  lost, run `replace-key` again.
+  lost, run `replace-key` again. A warning `API_KEY_EXPIRED` means it is too late: if the service refuses the key,
+  the account cannot be recovered, and only a new one, `register-agent --overwrite`, will do.
 - `$SNAPHOP_MAPS_API_KEY` is only sent to `$SNAPHOP_MAPS_URL`, or to https://maps.snaphop.ai when that is not set;
   `--url` alone never sends it elsewhere. Once `replace-key` has replaced the key it holds, the kept key is sent
   instead, with the warning `ENVIRONMENT_KEY_REPLACED`: tell the user to unset the variable.
@@ -129,7 +130,7 @@ Refusals you will meet:
 - `TOO_MANY_REQUESTS`: wait and try again later.
 - `MAP_LIMIT_REACHED`: the workspace is full. Offer to withdraw a map the user no longer needs.
 - `REFUSED`: the service refused without a code of its own. `error.detail` holds what it said.
-- `API_KEY_INVALID`: the key is expired or revoked. Check `snaphop-maps credentials`. If `hint` says another key is
+- `API_KEY_INVALID`: the key is unknown, expired or revoked. Check `snaphop-maps credentials`. If `hint` says another key is
   kept, use that one. Only if there is no newer key, register again with `--overwrite`, which starts a new account
   and replaces the kept key.
 
