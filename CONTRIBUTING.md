@@ -62,9 +62,12 @@ http". Explain why in the body when it is not obvious.
 
 ## Releases
 
-Maintainers release by adding the version's `## X.Y.Z — date` section to `CHANGELOG.md` on `main` and pushing the
-tag `vX.Y.Z`. The Release workflow checks, builds, attests and publishes it (ADR 0002). Never build or upload a
-release binary by hand.
+Maintainers release with one click: Actions → Release → Run workflow, on `main`. The workflow records what
+`CHANGELOG.md` lists under Unreleased as the next version's section, runs every check, commits the section and
+pushes the tag `vX.Y.Z`, then checks, builds, attests and publishes the release from that tag (ADRs 0002 and 0006).
+The version is `auto` by default: the next minor version when Unreleased has an Added, Changed, Removed or
+Deprecated section, otherwise the next patch. Give `patch`, `minor`, `major` or an exact version to override it, and
+tick dry run to see the version and notes without releasing. Never build or upload a release binary by hand.
 
 ## License
 
