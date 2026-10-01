@@ -5,6 +5,12 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Changed
+
+- **A release is one press again** (ADR 0008). SnapHop's private snaphop-build-deploy repository cuts, tags, builds
+  and publishes each release with this repository's own scripts and `make -j dist`. No workflow in this repository
+  holds write permissions, and releases still carry `SHA256SUMS` and no build provenance attestation.
+
 ## 0.3.1 — 2026-10-01
 
 ### Fixed
