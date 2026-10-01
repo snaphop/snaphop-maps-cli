@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.3.2 — 2026-10-01
+
 ### Changed
 
 - **A release is one press again** (ADR 0008). SnapHop's private snaphop-build-deploy repository cuts, tags, builds
