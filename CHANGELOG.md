@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-01
+
 ### Removed
 
 - **The Release workflow** (ADR 0007). No workflow in this public repository holds write permissions now: a
