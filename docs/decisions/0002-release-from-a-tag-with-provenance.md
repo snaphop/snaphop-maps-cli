@@ -1,7 +1,8 @@
 # 0002 — Release from a tag, with build provenance
 
 Accepted 2026-09-30. Amends "Publishing releases" under "Left out" in
-[0001](0001-call-the-mcp-server-for-parity.md).
+[0001](0001-call-the-mcp-server-for-parity.md). Amended by [0006](0006-cut-a-release-with-one-click.md): one click on
+`main` now commits the changelog section and pushes the tag, and a dry run replaces the rehearsal.
 
 ## Context
 

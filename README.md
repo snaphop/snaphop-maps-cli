@@ -159,8 +159,8 @@ a key is never sent in the clear. The CLI follows no redirects.
 
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
-and runs `govulncheck`. To release, add the version's section to `CHANGELOG.md` and push the tag `vX.Y.Z`; the
-Release workflow does the rest (ADR 0002). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
+and runs `govulncheck`. To release, run the Release workflow on `main`: it turns Unreleased in `CHANGELOG.md`
+into the next version, tags it and publishes it (ADRs 0002 and 0006). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
 
 ## License
 
