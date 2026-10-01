@@ -21,6 +21,11 @@ CLI offers exactly what the MCP server offers:
 | `rollback-map`   | `rollback_map`   | Make an earlier release live again; the draft is left as it is      |
 | `withdraw-map`   | `withdraw_map`   | Take a map down for good (needs `--yes`)                            |
 | `list-activity`  | `list_activity`  | The workspace's 50 most recent events                               |
+| `invite-person`  | `invite_person`  | Invite a person by a link you give them; nothing is emailed         |
+| `list-invitations` | `list_invitations` | List the invitations not yet accepted                           |
+| `revoke-invitation` | `revoke_invitation` | Stop an invitation's link from working                        |
+| `list-members`   | `list_members`   | List the workspace's members                                        |
+| `remove-member`  | `remove_member`  | Remove a person from the workspace (needs `--yes`)                  |
 | `replace-key`    | `replace_key`    | Replace the API key before it expires; keeps the new one            |
 | `call`           | any              | Call any tool by name with `--args` JSON                            |
 | `tools`          | `tools/list`     | The service's tools and the JSON Schema of their arguments, live    |
@@ -71,7 +76,22 @@ snaphop-maps replace-key                                        # before the key
 
 Positions are `[longitude, latitude]`: longitude first. Text is plain and is never read as HTML or Markdown.
 Without a view, a map opens on all of its markers. The account is deleted, and its maps taken down, after
-`limits.inactivityDays` days without a request, and `get-map` returns a map's whole draft if you want to keep it.
+`limits.inactivityDays` days without a request, unless a person it invited has joined, and `get-map` returns a
+map's whole draft if you want to keep it.
+
+To keep the maps after the agent stops, invite the person it works for. Nothing is emailed: the answer's `link` is
+for the agent to give them in its conversation, and it is shown once. They open it signed in with that address
+and join. While a person who joined remains in the workspace, the account is not deleted for inactivity; when the
+last one leaves, the countdown starts again. A workspace holds at most `limits.peoplePerWorkspace` people,
+counting invitations not yet accepted.
+
+```sh
+snaphop-maps invite-person --email ana@example.com --role EDITOR   # ADMIN, EDITOR or VIEWER
+snaphop-maps list-invitations
+snaphop-maps revoke-invitation INVITATION_ID
+snaphop-maps list-members
+snaphop-maps remove-member USER_ID --yes
+```
 
 A JSON flag (`--markers`, `--view`, `--controls`, `--args`) takes JSON inline, `@file` or `-` for standard input.
 `--args` takes a tool's whole argument object, and flags override its fields, so a draft from `get-map` goes back
@@ -86,9 +106,9 @@ snaphop-maps create-map --args @draft.json
 
 [`skills/snaphop-maps/SKILL.md`](skills/snaphop-maps/SKILL.md) is an [Agent Skill](https://agentskills.io). It
 teaches an assistant when to reach for SnapHop Maps and how to use this CLI well: coordinates longitude first,
-confirming before a withdrawal, keeping the key secret, and what each error means. Claude, ChatGPT and Codex, Gemini,
-Grok, Cursor and the other clients that follow the standard all read the same file. The binary carries it too, so
-the skill always matches the version you run:
+confirming before a withdrawal, inviting the user so they keep their maps, keeping the key secret, and what each
+error means. Claude, ChatGPT and Codex, Gemini, Grok, Cursor and the other clients that follow the standard all
+read the same file. The binary carries it too, so the skill always matches the version you run:
 
 | Assistant                     | Install                                                   | Where it goes                   |
 | ----------------------------- | --------------------------------------------------------- | ------------------------------- |

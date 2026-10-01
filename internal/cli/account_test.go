@@ -25,7 +25,7 @@ func registered(apiKey string) map[string]any {
 	return map[string]any{
 		"agentId": "a1", "workspaceId": "w1", "apiKey": apiKey, "keyId": "k1",
 		"scopes": []any{"EDIT_MAPS", "PUBLISH_MAPS", "READ_MAPS"}, "expiresAt": "2026-10-30T12:00:00Z",
-		"limits": map[string]any{"mapsPerWorkspace": 25, "markersPerMap": 500, "inactivityDays": 7},
+		"limits": map[string]any{"mapsPerWorkspace": 25, "markersPerMap": 500, "peoplePerWorkspace": 5, "inactivityDays": 7},
 	}
 }
 

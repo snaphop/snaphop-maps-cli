@@ -157,6 +157,16 @@ func TestCommandsCallTheirTools(t *testing.T) {
 			"rollback_map", `{"expectedActive":3,"id":"m1","release":1}`},
 		{"activity", []string{"list-activity"}, "list_activity", `{}`},
 		{"withdraw", []string{"withdraw-map", "m1", "--yes"}, "withdraw_map", `{"id":"m1"}`},
+		{"invite", []string{"invite-person", "--email", "ana@example.com", "--role", "EDITOR"}, "invite_person", `{"email":"ana@example.com","role":"EDITOR"}`},
+		{"invite from args", []string{"invite-person", "--args", `{"email": "ana@example.com", "role": "VIEWER"}`, "--role", "ADMIN"},
+			"invite_person", `{"email":"ana@example.com","role":"ADMIN"}`},
+		{"invitations", []string{"list-invitations"}, "list_invitations", `{}`},
+		{"revoke by position", []string{"revoke-invitation", "i1"}, "revoke_invitation", `{"id":"i1"}`},
+		{"revoke by flag", []string{"revoke-invitation", "--id", "i1"}, "revoke_invitation", `{"id":"i1"}`},
+		{"members", []string{"list-members"}, "list_members", `{}`},
+		{"remove by position", []string{"remove-member", "u1", "--yes"}, "remove_member", `{"userId":"u1"}`},
+		{"remove by flag", []string{"remove-member", "--user-id", "u1", "--yes"}, "remove_member", `{"userId":"u1"}`},
+		{"remove by call", []string{"call", "remove_member", "--args", `{"userId": "u1"}`, "--yes"}, "remove_member", `{"userId":"u1"}`},
 		{"replace", []string{"replace-key", "--no-save"}, "replace_key", `{}`},
 		{"call", []string{"call", "get-map", "--args", `{"id": "m1"}`}, "get_map", `{"id":"m1"}`},
 		{"a tool's own name", []string{"list_maps"}, "list_maps", `{}`},
@@ -243,6 +253,13 @@ func TestLocalRefusalsSendNothing(t *testing.T) {
 		{"release not a number", []string{"rollback-map", "m1", "--release", "two"}, exitUsage, "INVALID_FLAG", nil},
 		{"release missing", []string{"rollback-map", "m1"}, exitUsage, "MISSING_ARGUMENT", nil},
 		{"withdraw unconfirmed by call", []string{"call", "withdraw_map", "--args", `{"id": "m1"}`}, exitUsage, "CONFIRMATION_REQUIRED", nil},
+		{"remove unconfirmed", []string{"remove-member", "u1"}, exitUsage, "CONFIRMATION_REQUIRED", nil},
+		{"remove unconfirmed by call", []string{"call", "remove_member", "--args", `{"userId": "u1"}`}, exitUsage, "CONFIRMATION_REQUIRED", nil},
+		{"remove without a user", []string{"remove-member", "--yes"}, exitUsage, "MISSING_ARGUMENT", nil},
+		{"two users", []string{"remove-member", "u1", "u2", "--yes"}, exitUsage, "UNEXPECTED_ARGUMENT", nil},
+		{"invite without a role", []string{"invite-person", "--email", "ana@example.com"}, exitUsage, "MISSING_ARGUMENT", nil},
+		{"invite without an address", []string{"invite-person", "--role", "EDITOR"}, exitUsage, "MISSING_ARGUMENT", nil},
+		{"revoke without an id", []string{"revoke-invitation"}, exitUsage, "MISSING_ARGUMENT", nil},
 		{"not a url", []string{"list-maps", "--url", "http://[::1"}, exitUsage, "INVALID_URL", nil},
 		{"no host", []string{"list-maps", "--url", "https://"}, exitUsage, "INVALID_URL", nil},
 		{"not http", []string{"list-maps", "--url", "ftp://maps.snaphop.ai"}, exitUsage, "INVALID_URL", nil},
@@ -363,6 +380,10 @@ func TestFailedExchangesSayWhetherToRepeat(t *testing.T) {
 		{"create may have happened", answer{status: 502, body: "Bad gateway"}, []string{"create-map", "--name", "N"}, "HTTP_502", false, "list-maps"},
 		{"publish may have happened", answer{status: 504}, []string{"publish-map", "m1"}, "HTTP_504", false, "unpublishedChanges"},
 		{"read is safe", answer{status: 503}, []string{"get-map", "m1"}, "HTTP_503", false, "safe to repeat"},
+		{"invite may have happened", answer{status: 504}, []string{"invite-person", "--email", "ana@example.com", "--role", "EDITOR"}, "HTTP_504", false, "same address again"},
+		{"revoke is safe", answer{status: 502}, []string{"revoke-invitation", "i1"}, "HTTP_502", false, "INVITATION_NOT_FOUND"},
+		{"remove is safe", answer{status: 504}, []string{"remove-member", "u1", "--yes"}, "HTTP_504", false, "MEMBER_NOT_FOUND"},
+		{"members are safe to read", answer{status: 503}, []string{"list-members"}, "HTTP_503", false, "safe to repeat"},
 		{"edge challenge", answer{status: 403, header: http.Header{"Cf-Mitigated": {"challenge"}}}, []string{"list-maps"}, "EDGE_CHALLENGE", true, "will not help"},
 		{"rate limited", answer{status: 429, header: http.Header{"Retry-After": {"30"}}}, []string{"list-maps"}, "HTTP_429", true, "after the 30"},
 		{"rate limited without a time", answer{status: 429}, []string{"list-maps"}, "HTTP_429", true, "try again later."},
@@ -850,5 +871,85 @@ func TestA401WithoutAKeyIsNotTheKeysRefusal(t *testing.T) {
 		if p.OutcomeKnown == nil || !*p.OutcomeKnown || strings.Contains(p.Hint, "register") {
 			t.Fatalf("%v: error = %+v", args, p)
 		}
+	}
+}
+
+// TestEveryDestructiveCommandNeedsConfirming holds the confirmations to the command table: a tool the
+// service calls destructive runs only with --yes, and nothing else asks for it.
+func TestEveryDestructiveCommandNeedsConfirming(t *testing.T) {
+	t.Parallel()
+	destructive := 0
+	for _, cmd := range commands() {
+		confirm, confirmed := confirmations[cmd.Tool]
+		if confirmed != cmd.Destructive {
+			t.Errorf("%s is destructive %v, but needs confirming %v", cmd.Name, cmd.Destructive, confirmed)
+		}
+		if !cmd.Destructive {
+			continue
+		}
+		destructive++
+		if confirm.message == "" || !strings.Contains(confirm.hint, "--yes") || !strings.Contains(cmd.Description, "--yes") {
+			t.Errorf("%s does not say it needs --yes: %+v", cmd.Name, confirm)
+		}
+		if !strings.Contains(cmd.Example, "--yes") {
+			t.Errorf("%s's example has no --yes: %s", cmd.Name, cmd.Example)
+		}
+	}
+	if destructive != len(confirmations) {
+		t.Errorf("%d destructive commands, %d confirmations", destructive, len(confirmations))
+	}
+}
+
+// TestAnInvitationIsPrintedAsItCame: the link is shown this once, and is for the agent to hand to a
+// person, so standard output holds it exactly as the service wrote it, and nothing is kept.
+func TestAnInvitationIsPrintedAsItCame(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return invited() })
+	h := newHarness(t, s)
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+	o := h.run("invite-person", "--email", "ana@example.com", "--role", "EDITOR")
+	if o.code != exitOK || o.stdout != invitation+"\n" || o.stderr != "" {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", o.code, o.stdout, o.stderr)
+	}
+	if got := decode(t, o.stdout)["link"]; got != invitationLink {
+		t.Fatalf("link = %v", got)
+	}
+	if _, kept := h.kept(); kept {
+		t.Fatal("an invitation was kept in the credentials file")
+	}
+	if pretty := h.run("invite-person", "--email", "ana@example.com", "--role", "EDITOR", "--pretty"); !strings.Contains(pretty.stdout, `"link": "`+invitationLink+`"`) {
+		t.Fatalf("stdout = %s", pretty.stdout)
+	}
+}
+
+// TestRefusalsAboutPeopleSayWhatToDoNext: each code the people tools refuse with has this program's
+// next step.
+func TestRefusalsAboutPeopleSayWhatToDoNext(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		args []string
+		code string
+		hint string
+	}{
+		{[]string{"invite-person", "--email", "ana", "--role", "OWNER"}, "INVITATION_INVALID", "ADMIN, EDITOR or VIEWER"},
+		{[]string{"invite-person", "--email", "ana@example.com", "--role", "EDITOR"}, "ALREADY_A_MEMBER", "list-members"},
+		{[]string{"invite-person", "--email", "ben@example.com", "--role", "VIEWER"}, "PEOPLE_LIMIT_REACHED", "revoke-invitation"},
+		{[]string{"revoke-invitation", "i1"}, "INVITATION_NOT_FOUND", "list-invitations"},
+		{[]string{"remove-member", "u1", "--yes"}, "MEMBER_NOT_FOUND", "list-members"},
+		{[]string{"list-members"}, "AGENT_KEY_REQUIRED", "invite and remove people"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.code, func(t *testing.T) {
+			t.Parallel()
+			s := newService(t, func(request) answer {
+				return refusal(map[string]any{"error": map[string]any{"code": tc.code, "message": "Refused", "hint": "the service's"}})
+			})
+			h := newHarness(t, s)
+			h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_env"
+			o := h.run(tc.args...)
+			if p := o.failure(t, exitRefused, tc.code); !strings.Contains(p.Hint, tc.hint) || o.stdout != "" {
+				t.Fatalf("hint = %q, want %q; stdout = %q", p.Hint, tc.hint, o.stdout)
+			}
+		})
 	}
 }

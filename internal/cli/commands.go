@@ -57,11 +57,19 @@ var (
 	}
 	yesFlag = flagSpec{
 		Name: "yes", Kind: kindLocal,
-		Description: "Confirm an action that cannot be undone.",
+		Description: "Confirm a destructive action: withdrawing a map, or removing a person.",
 	}
 	idFlag = flagSpec{
 		Name: "id", Argument: "id", Kind: kindString, Required: true,
 		Description: "The map's id, as create-map or list-maps returned it. May be given as the first positional argument instead.",
+	}
+	invitationIDFlag = flagSpec{
+		Name: "id", Argument: "id", Kind: kindString, Required: true,
+		Description: "The invitation's id, as invite-person or list-invitations returned it. May be given as the first positional argument instead.",
+	}
+	userIDFlag = flagSpec{
+		Name: "user-id", Argument: "userId", Kind: kindString, Required: true,
+		Description: "The member's userId, as list-members returned it. May be given as the first positional argument instead.",
 	}
 	publishCreateFlag = flagSpec{
 		Name: "publish", Argument: "publish", Kind: kindBool,
@@ -206,6 +214,58 @@ func commands() []*command {
 				"and when.",
 			Flags:   []flagSpec{argsFlag},
 			Example: "snaphop-maps list-activity",
+		},
+		{
+			Name: "invite-person", Tool: "invite_person", NeedsKey: true,
+			Summary: "Invite a person by a link you give them",
+			Description: "Invites a person you are working for into the workspace by their email address, with a role. " +
+				"Nothing is emailed: the answer's link is for you to give them yourself, in your conversation, and it is " +
+				"shown this once. They open it signed in to SnapHop Maps with that address, signing up first if they have " +
+				"no account, and join. While a person who joined remains, the account is not deleted for inactivity. " +
+				"Inviting the same address again replaces its invitation and link. The workspace holds at most " +
+				"limits.peoplePerWorkspace people, counting invitations not yet accepted.",
+			Flags: []flagSpec{
+				{Name: "email", Argument: "email", Kind: kindString, Required: true,
+					Description: "The person's email address. Only someone signed in with it can join by the link."},
+				{Name: "role", Argument: "role", Kind: kindString, Required: true,
+					Description: "What they may do: ADMIN everything the agent can, members included; EDITOR create, change, publish and withdraw maps; VIEWER read only."},
+				argsFlag,
+			},
+			Example: "snaphop-maps invite-person --email ana@example.com --role EDITOR",
+		},
+		{
+			Name: "list-invitations", Tool: "list_invitations", NeedsKey: true, ReadOnly: true,
+			Summary: "List the invitations not yet accepted",
+			Description: "Lists the invitations nobody has accepted yet, newest first: each one's id, email, role and when " +
+				"it expires. Their links are not shown again; invite the address again for a new one.",
+			Flags:   []flagSpec{argsFlag},
+			Example: "snaphop-maps list-invitations",
+		},
+		{
+			Name: "revoke-invitation", Tool: "revoke_invitation", NeedsKey: true, Positional: "id",
+			Summary: "Stop an invitation's link from working",
+			Description: "Revokes an invitation nobody has accepted yet: its link stops working. A person who already " +
+				"joined is removed with remove-member instead.",
+			Flags:   []flagSpec{invitationIDFlag, argsFlag},
+			Example: "snaphop-maps revoke-invitation INVITATION_ID",
+		},
+		{
+			Name: "list-members", Tool: "list_members", NeedsKey: true, ReadOnly: true,
+			Summary: "List the workspace's members",
+			Description: "Lists the workspace's members, the agent included: each one's userId, accountType, email (a " +
+				"person's), displayName, role and when they joined.",
+			Flags:   []flagSpec{argsFlag},
+			Example: "snaphop-maps list-members",
+		},
+		{
+			Name: "remove-member", Tool: "remove_member", NeedsKey: true, Destructive: true, Positional: "userId",
+			Summary: "Remove a person from the workspace",
+			Description: "Removes a person from the workspace at once and ends their sessions; only a new " +
+				"invitation they accept brings them back, so it needs --yes. The agent cannot remove itself. When the " +
+				"last person leaves, the account is again deleted after limits.inactivityDays days without a request, " +
+				"counted from then.",
+			Flags:   []flagSpec{userIDFlag, yesFlag, argsFlag},
+			Example: "snaphop-maps remove-member USER_ID --yes",
 		},
 		{
 			Name: "replace-key", Tool: "replace_key", NeedsKey: true,
