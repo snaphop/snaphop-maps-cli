@@ -2,7 +2,9 @@
 
 Accepted 2026-09-30. Amends "Publishing releases" under "Left out" in
 [0001](0001-call-the-mcp-server-for-parity.md). Amended by [0006](0006-cut-a-release-with-one-click.md): one click on
-`main` now commits the changelog section and pushes the tag, and a dry run replaces the rehearsal.
+`main` now commits the changelog section and pushes the tag, and a dry run replaces the rehearsal. Superseded by
+[0007](0007-release-from-a-maintainers-agent.md): the Release workflow is removed, and a maintainer's coding agent
+cuts and publishes each release.
 
 ## Context
 

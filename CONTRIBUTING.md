@@ -62,12 +62,27 @@ http". Explain why in the body when it is not obvious.
 
 ## Releases
 
-Maintainers release with one click: Actions → Release → Run workflow, on `main`. The workflow records what
-`CHANGELOG.md` lists under Unreleased as the next version's section, runs every check, commits the section and
-pushes the tag `vX.Y.Z`, then checks, builds, attests and publishes the release from that tag (ADRs 0002 and 0006).
+No workflow releases. When a maintainer asks for a release, their coding agent cuts and publishes it from a clean,
+up-to-date checkout of `main`, with the maintainer's own GitHub credentials (ADR 0007):
+
+```sh
+version=$(scripts/release-cut.sh auto)     # records Unreleased in CHANGELOG.md as the next version's section
+./scripts/ci-local.sh                      # every check; stop here if anything fails
+git commit -m "Release $version" -- CHANGELOG.md
+git push origin HEAD:main
+git tag -a "v$version" -m "snaphop-maps $version"   # append ": security release" when the notes open with one
+git fetch origin main && scripts/release-check.sh "v$version"
+git push origin "v$version"
+make -j dist VERSION="v$version"           # every platform, the Agent Skill and SHA256SUMS, from the tagged commit
+notes=$(mktemp) && scripts/release-notes.sh "v$version" > "$notes"
+gh release create "v$version" --verify-tag --title "SnapHop Maps CLI $version" --notes-file "$notes" \
+  dist/snaphop-maps-* dist/SHA256SUMS
+```
+
 The version is `auto` by default: the next minor version when Unreleased has an Added, Changed, Removed or
-Deprecated section, otherwise the next patch. Give `patch`, `minor`, `major` or an exact version to override it, and
-tick dry run to see the version and notes without releasing. Never build or upload a release binary by hand.
+Deprecated section, otherwise the next patch. Give `patch`, `minor`, `major` or an exact version to override it.
+`release-cut.sh` refuses when Unreleased lists nothing, and `release-check.sh` refuses a tag that disagrees with the
+changelog or whose commit is not on `main`. Publish only what `make dist` built from the tagged commit.
 
 ## License
 

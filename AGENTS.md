@@ -38,9 +38,11 @@ state except in `cmd/snaphop-maps/main_test.go`. `./scripts/ci-local.sh` is the 
 `make -j dist`, which builds every platform concurrently, and `govulncheck`.
 
 This repository is public. CI runs only on GitHub-hosted runners with a read-only token and no secrets, because
-pull requests from forks run there. Never add a self-hosted runner, a secret or `pull_request_target`. Releases come only
-from the Release workflow (ADRs 0002 and 0006): a maintainer runs it on `main`, and it records Unreleased in
-`CHANGELOG.md` as the next version's section, pushes the tag `vX.Y.Z` and publishes. Cutting a release is a
-maintainer's decision that no routine change implies, and a binary is never built or uploaded by hand. Never commit
+pull requests from forks run there. Never add a self-hosted runner, a secret, a write permission or `pull_request_target`. No workflow releases
+(ADR 0007): when a maintainer asks for a release, you cut it on their machine by following the steps in
+`CONTRIBUTING.md` exactly: record Unreleased in `CHANGELOG.md` as the next version, pass `./scripts/ci-local.sh`, push
+the commit to `main` and the tag `vX.Y.Z`, build with `make -j dist` from that tag and publish with `gh release
+create`. Cutting a release is a maintainer's decision that no routine change implies, and only what `make dist`
+built from the tag is ever published. Never commit
 a real API key, a credentials file or production data. Test against a local plane (`snaphop-maps/scripts/dev.sh`), never by
 registering agents on production.

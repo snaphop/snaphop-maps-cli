@@ -1,9 +1,16 @@
 # Changelog
 
-Each release is a section `## MAJOR.MINOR.PATCH — date`, which the Release workflow publishes as its notes. A
+Each release is a section `## MAJOR.MINOR.PATCH — date`, which `scripts/release-notes.sh` turns into its notes. A
 section with a `### Security` subsection is a security release, and its notes say so first.
 
 ## Unreleased
+
+### Removed
+
+- **The Release workflow** (ADR 0007). No workflow in this public repository holds write permissions now: a
+  maintainer's coding agent cuts each release, builds it with `make -j dist` from the tag and publishes it, as
+  CONTRIBUTING.md shows. Release binaries no longer carry a build provenance attestation; check them against
+  `SHA256SUMS`, or build the tag yourself. v0.2.0 to v0.2.2 keep theirs.
 
 ## 0.2.2 — 2026-10-01
 

@@ -43,8 +43,8 @@ fail the call.
   refused field.
 - **Automatic retries.** Repeating `create_map` can make two maps, and repeating `publish_map` adds a release, so
   the CLI never retries by itself. Instead, each error says whether a repeat is safe.
-- **Publishing releases.** Superseded by [0002](0002-release-from-a-tag-with-provenance.md): a pushed tag publishes
-  the release from CI.
+- **Publishing releases.** Superseded by [0002](0002-release-from-a-tag-with-provenance.md), then
+  [0007](0007-release-from-a-maintainers-agent.md): a maintainer's coding agent publishes each release.
 
 ## Consequences
 

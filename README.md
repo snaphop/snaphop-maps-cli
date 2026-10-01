@@ -36,14 +36,15 @@ Skill for this CLI: print, install or pack it), `schema` (this program described
 go install github.com/snaphop/snaphop-maps-cli/cmd/snaphop-maps@latest
 ```
 
-Or download a binary from [Releases](https://github.com/snaphop/snaphop-maps-cli/releases). The Release
-workflow builds each one from the tagged commit and attests its provenance, so you can verify one before running
-it:
+Or download a binary from [Releases](https://github.com/snaphop/snaphop-maps-cli/releases). Each is built from
+the tagged commit; check the download before running it:
 
 ```sh
 sha256sum -c SHA256SUMS --ignore-missing
-gh attestation verify snaphop-maps-linux-amd64 --repo snaphop/snaphop-maps-cli
 ```
+
+Releases after v0.2.2 carry no build provenance attestation (ADR 0007). To be sure a binary matches the source,
+`go install` the tag or build it yourself.
 
 To build every platform yourself, run `make -j dist`. The binaries go in `dist/`, rebuilt each time, next to their
 `SHA256SUMS`.
@@ -159,8 +160,9 @@ a key is never sent in the clear. The CLI follows no redirects.
 
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
-and runs `govulncheck`. To release, run the Release workflow on `main`: it turns Unreleased in `CHANGELOG.md`
-into the next version, tags it and publishes it (ADRs 0002 and 0006). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md) and [docs/decisions](docs/decisions).
+and runs `govulncheck`. No workflow releases: a maintainer's coding agent turns Unreleased in `CHANGELOG.md` into
+the next version, tags it and publishes it (ADR 0007). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md)
+and [docs/decisions](docs/decisions).
 
 ## License
 

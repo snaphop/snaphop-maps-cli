@@ -26,7 +26,7 @@ claude.ai, ChatGPT and the model APIs, in taking it as a zip upload.
   Grok Build also read), `.gemini/skills` (Gemini CLI), `.grok/skills` (Grok Build) or `.cursor/skills` (Cursor).
   It replaces its own earlier copy and touches nothing else.
 - **Packed for upload.** `skill pack` writes a zip holding the skill's one directory. The same skill always packs
-  to the same bytes. The Release workflow attaches it to each release, with its checksum and attestation.
+  to the same bytes. Each release attaches it, with its checksum (ADR 0007).
 - **Tested like code.** Tests hold the skill to the specification's frontmatter rules, require it to show every
   command, and run every example in its code blocks through the CLI.
 

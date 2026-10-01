@@ -50,11 +50,11 @@ observe its arguments and output.
 - The module MUST depend on the Go standard library alone. A new dependency needs an ADR and review.
 - CI runs untrusted pull requests from forks. It MUST use GitHub-hosted runners, a read-only token and no secrets,
   and MUST NOT use `pull_request_target`. Every action MUST be pinned to a full commit SHA.
-- Release binaries MUST be built and published only by the Release workflow, from a tag on `main`, with a build
-  provenance attestation for each. Only its publishing job, and the job that commits the changelog section and
-  pushes the tag from `main`, may hold write permissions, and neither may run the module's code. The workflow that
-  runs is the tagged commit's own, so a repository ruleset MUST restrict creating, moving and deleting `v*` tags to
-  maintainers and GitHub Actions (ADRs 0002 and 0006).
+- No workflow may hold write permissions or publish a release. A release MUST be cut only when a maintainer asks
+  for one, by the maintainer or their coding agent with the maintainer's own credentials, which MUST NOT be
+  committed or printed. Its binaries MUST be built by `make dist` from a tag on `main` that `release-check.sh`
+  accepts, after `./scripts/ci-local.sh` passes, and published with their `SHA256SUMS`. A repository ruleset MUST
+  restrict creating, moving and deleting `v*` tags to maintainers (ADR 0007).
 - Tests MUST NOT reach production. Registering agents or publishing maps on production is not a verification step.
 
 `--api-key` and `--args` are visible to other processes on the same machine. Prefer `$SNAPHOP_MAPS_API_KEY` or the

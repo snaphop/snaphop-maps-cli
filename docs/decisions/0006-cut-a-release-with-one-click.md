@@ -1,6 +1,8 @@
 # 0006 — Cut a release with one click
 
-Accepted 2026-10-01. Amends [0002](0002-release-from-a-tag-with-provenance.md).
+Accepted 2026-10-01. Amends [0002](0002-release-from-a-tag-with-provenance.md). Superseded by
+[0007](0007-release-from-a-maintainers-agent.md): the Release workflow is removed, and a maintainer's coding agent
+cuts and publishes each release.
 
 ## Context
 
