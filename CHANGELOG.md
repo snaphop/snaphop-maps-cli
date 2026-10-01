@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.2.2 — 2026-10-01
+
 ### Security
 
 - **A new key is kept before it is printed** (ADR 0005). `register-agent` printed the key first, so a reader of
