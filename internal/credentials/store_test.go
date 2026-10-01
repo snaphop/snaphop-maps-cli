@@ -3,6 +3,7 @@ package credentials
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -365,6 +366,33 @@ func TestCommandsKeepingKeysAtOnceLoseNone(t *testing.T) {
 		if got, ok, err := store.Get(fmt.Sprintf("https://service-%d", i)); !ok || err != nil || got.APIKey != fmt.Sprintf("shk_%d", i) {
 			t.Errorf("service %d kept %+v, %v, %v", i, got, ok, err)
 		}
+	}
+}
+
+// TestALockFileSaidToBeMissingIsOpenedAgain is macOS answering that a lock file it was asked to create
+// does not exist, as it can while other commands create it at once: the open is tried again, and only
+// an answer that lasts past the wait refuses the command.
+func TestALockFileSaidToBeMissingIsOpenedAgain(t *testing.T) {
+	t.Parallel()
+	missing := &fs.PathError{Op: "openat", Path: "credentials.json.lock", Err: fs.ErrNotExist}
+	opens := 0
+	store := Store{Path: filepath.Join(t.TempDir(), "credentials.json"),
+		openLock: func(root *os.Root, name string) (*os.File, error) {
+			if opens++; opens < 3 {
+				return nil, missing
+			}
+			return openLockFile(root, name)
+		}}
+	if err := store.Put(service, Account{APIKey: "shk_kept"}); err != nil || opens != 3 {
+		t.Fatalf("Put error = %v after %d opens", err, opens)
+	}
+	if got, ok, err := store.Get(service); !ok || err != nil || got.APIKey != "shk_kept" {
+		t.Fatalf("Get = %+v, %v, %v", got, ok, err)
+	}
+	gone := Store{Path: store.Path, Wait: 50 * time.Millisecond,
+		openLock: func(*os.Root, string) (*os.File, error) { return nil, missing }}
+	if err := gone.Put(service, Account{APIKey: "shk_new"}); !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), "cannot lock") {
+		t.Fatalf("Put error = %v", err)
 	}
 }
 

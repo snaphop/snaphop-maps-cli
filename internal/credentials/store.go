@@ -89,10 +89,11 @@ type Store struct {
 	// Wait is how long to wait for another command to release the file's lock; zero is DefaultWait.
 	Wait time.Duration
 
-	// mkdirAll, write and tryLock default to os.MkdirAll, atomicfile.WriteIn and tryLockFile; tests
-	// make them fail.
+	// mkdirAll, write, openLock and tryLock default to os.MkdirAll, atomicfile.WriteIn, openLockFile
+	// and tryLockFile; tests make them fail.
 	mkdirAll func(string, os.FileMode) error
 	write    func(*os.Root, string, []byte, os.FileMode) error
+	openLock func(root *os.Root, name string) (*os.File, error)
 	tryLock  func(file *os.File, exclusive bool) (bool, error)
 }
 
@@ -225,11 +226,16 @@ var errUnlockable = errors.New("the lock cannot be had here")
 // lock. The lock file is opened inside the credentials file's directory, and a link that leads out of
 // it is refused.
 func (s Store) acquire(root *os.Root, exclusive bool) (func(), error) {
-	file, err := root.OpenFile(filepath.Base(s.Path)+".lock", os.O_RDWR|os.O_CREATE, 0o600)
+	wait := DefaultWait
+	if s.Wait > 0 {
+		wait = s.Wait
+	}
+	deadline := time.Now().Add(wait)
+	file, err := s.open(root, deadline)
 	if err != nil {
 		return nil, fmt.Errorf("cannot lock %s: %w: %w", s.Path, errUnlockable, err)
 	}
-	if err := s.wait(file, exclusive); err != nil {
+	if err := s.wait(file, exclusive, wait, deadline); err != nil {
 		_ = file.Close()
 		return nil, fmt.Errorf("cannot lock %s: %w", s.Path, err)
 	}
@@ -239,17 +245,34 @@ func (s Store) acquire(root *os.Root, exclusive bool) (func(), error) {
 	}, nil
 }
 
-// wait tries the lock until it is had, or until Wait has passed: a command that holds it longer is
-// stuck, and waiting on would only hang this one.
-func (s Store) wait(file *os.File, exclusive bool) error {
-	tryLock, wait := tryLockFile, DefaultWait
+// open opens the lock file, creating it if it is missing. macOS can answer that a file it was asked to
+// create does not exist while other commands create it and rename the credentials file beside it, so
+// that answer is tried again until the deadline: past it, the directory itself is gone.
+func (s Store) open(root *os.Root, deadline time.Time) (*os.File, error) {
+	openLock := openLockFile
+	if s.openLock != nil {
+		openLock = s.openLock
+	}
+	for {
+		file, err := openLock(root, filepath.Base(s.Path)+".lock")
+		if !errors.Is(err, fs.ErrNotExist) || time.Now().After(deadline) {
+			return file, err
+		}
+		time.Sleep(lockPoll)
+	}
+}
+
+func openLockFile(root *os.Root, name string) (*os.File, error) {
+	return root.OpenFile(name, os.O_RDWR|os.O_CREATE, 0o600)
+}
+
+// wait tries the lock until it is had, or until the deadline has passed: a command that holds it
+// longer than wait is stuck, and waiting on would only hang this one.
+func (s Store) wait(file *os.File, exclusive bool, wait time.Duration, deadline time.Time) error {
+	tryLock := tryLockFile
 	if s.tryLock != nil {
 		tryLock = s.tryLock
 	}
-	if s.Wait > 0 {
-		wait = s.Wait
-	}
-	deadline := time.Now().Add(wait)
 	for {
 		locked, err := tryLock(file, exclusive)
 		switch {

@@ -5,6 +5,12 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Fixed
+
+- **Commands keeping keys at once on macOS no longer refuse for no reason.** macOS can answer that the credentials
+  file's lock does not exist while other commands are creating it, and the command was refused with "the lock
+  cannot be had here". The lock is now opened again until the usual 10-second wait runs out.
+
 ## 0.3.0 — 2026-10-01
 
 ### Removed
