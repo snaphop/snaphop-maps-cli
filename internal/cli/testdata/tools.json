@@ -568,6 +568,144 @@
       }
     },
     {
+      "name": "invite_person",
+      "title": "Invite a person",
+      "description": "Invites a person you are working for into the workspace by their email address, and returns link: give it to them in this conversation. Nothing is emailed. They open it signed in to SnapHop Maps with that address -- signing up first if they have no account -- and join with the role given. While someone who joined remains, the account is not deleted for inactivity. The link is shown this once; invite again for a new one, which replaces it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          },
+          "email": {
+            "type": "string",
+            "description": "The person's email address."
+          },
+          "role": {
+            "type": "string",
+            "description": "What they may do: ADMIN everything you can, members included; EDITOR create, change, publish and withdraw maps; VIEWER read only.",
+            "enum": [
+              "ADMIN",
+              "EDITOR",
+              "VIEWER"
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "list_invitations",
+      "title": "List invitations",
+      "description": "Lists the invitations nobody has accepted yet, newest first: each one's id, email, role and when it expires. The links are not shown again.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "revoke_invitation",
+      "title": "Revoke an invitation",
+      "description": "Stops an invitation nobody has accepted yet: its link no longer works.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          },
+          "id": {
+            "type": "string",
+            "description": "The invitation's id, as list_invitations gave it."
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "list_members",
+      "title": "List members",
+      "description": "Lists the workspace's members, you included: each one's userId, accountType, email (a person's), displayName, role and when they joined.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "remove_member",
+      "title": "Remove a member",
+      "description": "Removes a person from the workspace at once. When the last person leaves, the account is again deleted after the inactivity period without a request, counted from then.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          },
+          "userId": {
+            "type": "string",
+            "description": "The member's userId, as list_members gave it."
+          }
+        },
+        "required": [
+          "userId"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "replace_key",
       "title": "Replace the API key",
       "description": "Issues a new API key with the same scopes and a new expiry. Call it before the key expires: the account has no password and no other way back in. Returns the new apiKey, shown this once. The key given keeps working until the new one is first used, which stops it, so if this answer is lost, call it again with the same key.",

@@ -53,6 +53,19 @@ func refusal(structured any) answer {
 	return result(map[string]any{"isError": true, "structuredContent": structured})
 }
 
+// invitationLink is the link invite_person returns, with the & a query string holds.
+const invitationLink = "https://maps.example/account.html?action=join&token=inv_7Qm2xZ9pLk"
+
+// invitation is invite_person's answer, written as the service writes it: its fields in the
+// service's order, and the link's & as it is, which json.Marshal would escape.
+const invitation = `{"id":"i1","email":"ana@example.com","role":"EDITOR","createdAt":"2026-09-30T12:00:00Z",` +
+	`"expiresAt":"2026-10-07T12:00:00Z","link":"` + invitationLink + `"}`
+
+// invited is the fake service's answer to invite_person.
+func invited() answer {
+	return answer{status: 200, body: `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Invited"}],"structuredContent":` + invitation + `}}`}
+}
+
 // service is a fake SnapHop Maps MCP server.
 type service struct {
 	t        *testing.T

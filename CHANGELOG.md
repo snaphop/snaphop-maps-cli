@@ -5,6 +5,18 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Added
+
+- **Invite the people you work for**, at parity with SnapHop Maps' five new MCP tools. `invite-person --email
+  --role` invites a person into the agent's workspace as `ADMIN`, `EDITOR` or `VIEWER` and prints the invitation
+  with its `link`, exactly as the service gave it. Nothing is emailed: the agent itself gives the person the link,
+  in its conversation, and it is shown once. The person opens it signed in with that address and joins. While a
+  person who joined remains, the account is not deleted for inactivity; when the last one leaves, the countdown
+  starts again. A workspace holds at most `limits.peoplePerWorkspace` people, counting invitations not yet accepted.
+- `list-invitations`, `revoke-invitation ID`, `list-members` and `remove-member USER_ID`, which, like
+  `withdraw-map`, needs `--yes`. The skill teaches all five, and `PEOPLE_LIMIT_REACHED`, `ALREADY_A_MEMBER`,
+  `INVITATION_INVALID`, `INVITATION_NOT_FOUND` and `MEMBER_NOT_FOUND` come with this program's next step.
+
 ## 0.3.2 — 2026-10-01
 
 ### Changed

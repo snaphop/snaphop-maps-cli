@@ -556,8 +556,8 @@ func runCall(inv *invocation) int {
 // is printed, and a command that would issue one first proves it could keep it (ADR 0005): the key is
 // shown only once, and printing can fail, or end the process, as keeping it cannot.
 func (inv *invocation) callTool(tool string, arguments map[string]any) int {
-	if tool == "withdraw_map" && !inv.on("yes") {
-		return inv.usage("CONFIRMATION_REQUIRED", "Withdrawing a map takes it down for good and cannot be undone.", "Add --yes to withdraw it.")
+	if confirm, destructive := confirmations[tool]; destructive && !inv.on("yes") {
+		return inv.usage("CONFIRMATION_REQUIRED", confirm.message, confirm.hint)
 	}
 	issues := tool == "register_agent" || tool == "replace_key"
 	saves := issues && !inv.on("no-save")
@@ -829,13 +829,25 @@ var repeatHints = map[string]string{
 	"withdraw_map":   "It is safe to repeat: MAP_NOT_FOUND then means the first request withdrew it.",
 	"rollback_map":   "It may have been made live. Run `snaphop-maps get-map ID`: if activeRelease is the release you asked for, it was.",
 	"replace_key":    "Repeat it with the same key, which still works until a new key is used. Only the new key you go on to use is kept.",
+
+	// The people tools: an agent invites the people it works for by a link it hands them.
+	"invite_person":     "The invitation may have been made without its link reaching you. Invite the same address again: that replaces the invitation, and only the new link works.",
+	"revoke_invitation": "It is safe to repeat: INVITATION_NOT_FOUND then means the first request revoked it.",
+	"remove_member":     "It is safe to repeat: MEMBER_NOT_FOUND then means the first request removed them.",
+}
+
+// confirmations are the tools the service calls destructive, which run only with --yes: what each
+// would do, and how to confirm it. TestEveryDestructiveCommandNeedsConfirming holds it to the command table.
+var confirmations = map[string]struct{ message, hint string }{
+	"withdraw_map":  {"Withdrawing a map takes it down for good and cannot be undone.", "Add --yes to withdraw it."},
+	"remove_member": {"Removing a person ends their access to the workspace at once; only a new invitation they accept brings them back.", "Add --yes, once the user has agreed, to remove them."},
 }
 
 // refusalHints say what to do next about a refusal, by the service's code.
 var refusalHints = map[string]string{
 	"API_KEY_REQUIRED":              "Run `snaphop-maps register-agent --name NAME` once, which keeps the key, or set $SNAPHOP_MAPS_API_KEY.",
 	"API_KEY_INVALID":               "If the key was replaced, use the new one: `snaphop-maps credentials` shows which key is kept and where a key comes from. Otherwise it cannot be recovered; register again with `snaphop-maps register-agent --name NAME --overwrite`.",
-	"AGENT_KEY_REQUIRED":            "Only an agent's own key can replace itself; this key belongs to a person or a service account.",
+	"AGENT_KEY_REQUIRED":            "Only an agent's own key can replace itself or invite and remove people; this key belongs to a person or a service account.",
 	"AGENT_NAME_INVALID":            "Give a name of 1 to 200 characters on one line.",
 	"AGENT_REGISTRATION_CLOSED":     "This installation is not registering agents now. Try later, or use an existing account.",
 	"AGENT_REGISTRATIONS_EXHAUSTED": "Today's registrations are used up. Try again tomorrow.",
@@ -846,6 +858,11 @@ var refusalHints = map[string]string{
 	"DRAFT_CHANGED":                 "Read the map again with `snaphop-maps get-map ID` and redo the change.",
 	"RELEASE_UNAVAILABLE":           "Run `snaphop-maps list-releases ID` for the releases that can be made live. A map never published has none.",
 	"ACTIVE_RELEASE_CHANGED":        "Another release went live since you looked. Run `snaphop-maps list-releases ID` and decide again.",
+	"INVITATION_INVALID":            "Give --email as the person's address and --role as ADMIN, EDITOR or VIEWER.",
+	"ALREADY_A_MEMBER":              "That person is in the workspace already and needs no invitation. Run `snaphop-maps list-members` for their role.",
+	"PEOPLE_LIMIT_REACHED":          "The workspace holds as many people as it may, counting invitations not yet accepted. Revoke one with `snaphop-maps revoke-invitation ID`, or, once the user agrees, remove someone with `snaphop-maps remove-member USER_ID --yes`.",
+	"INVITATION_NOT_FOUND":          "It may have been accepted, revoked or replaced. Run `snaphop-maps list-invitations` for those still open, and `snaphop-maps list-members` for who joined.",
+	"MEMBER_NOT_FOUND":              "Run `snaphop-maps list-members` for the userIds in the workspace. The agent cannot remove itself.",
 	"INVALID_ARGUMENTS":             "Run `snaphop-maps tools` for the arguments each tool takes.",
 	"UNKNOWN_TOOL":                  "Run `snaphop-maps tools` for the tools the service has.",
 }

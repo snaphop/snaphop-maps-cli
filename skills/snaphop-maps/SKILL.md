@@ -1,6 +1,6 @@
 ---
 name: snaphop-maps
-description: Create, publish, change and withdraw interactive web maps with markers through the SnapHop Maps CLI (snaphop-maps). Use when the user wants a map of places, addresses, stops or points of interest that they can open, share as a link or embed in a web page, or wants to change or take down a map made earlier with SnapHop Maps.
+description: Create, publish, change and withdraw interactive web maps with markers through the SnapHop Maps CLI (snaphop-maps). Use when the user wants a map of places, addresses, stops or points of interest that they can open, share as a link or embed in a web page, or wants to change, take down or keep a map made earlier with SnapHop Maps, which they keep by joining its workspace.
 license: MIT
 compatibility: Needs a shell that can run the snaphop-maps binary and reach https://maps.snaphop.ai over HTTPS.
 metadata:
@@ -98,7 +98,8 @@ snaphop-maps rollback-map MAP_ID --release 1
 
 - The account is deleted, with every map on it, after `limits.inactivityDays` days without a request (the
   `register-agent` answer holds `limits`). Any command counts, including `snaphop-maps list-maps`. Tell the user.
-  If they need a map for longer, keep the `draft` from `get-map`: `create-map --args` takes it back as it is.
+  If they need a map for longer, invite them into the workspace (below): while a person who joined remains, the
+  account is not deleted. Or keep the `draft` from `get-map`: `create-map --args` takes it back as it is.
 - The key expires at `expiresAt`. A warning `API_KEY_EXPIRING` on stderr means run `snaphop-maps replace-key`, which
   keeps the new key in place of the old one. The old key works until the new one is first used, so if the answer is
   lost, run `replace-key` again. A warning `API_KEY_EXPIRED` means it is too late: if the service refuses the key,
@@ -106,6 +107,40 @@ snaphop-maps rollback-map MAP_ID --release 1
 - `$SNAPHOP_MAPS_API_KEY` is only sent to `$SNAPHOP_MAPS_URL`, or to https://maps.snaphop.ai when that is not set;
   `--url` alone never sends it elsewhere. Once `replace-key` has replaced the key it holds, the kept key is sent
   instead, with the warning `ENVIRONMENT_KEY_REPLACED`: tell the user to unset the variable.
+
+## Invite the people you work for
+
+To let the user keep, see and change the maps after you stop, invite them into the workspace. Ask for their
+email address and the role they want, and invite only a person the user asked you to:
+
+```sh
+snaphop-maps invite-person --email ana@example.com --role EDITOR
+```
+
+- **Nothing is emailed.** The answer's `link` is the invitation: give it to the user yourself, here in the
+  conversation, and nowhere else. It is shown this once. Inviting the same address again replaces the invitation,
+  and only the new link works.
+- They open the link signed in to SnapHop Maps with that address, signing up first if they have no account, and
+  join with one button. Only that address can join by it.
+- `role` is `ADMIN` (everything you can do, members included), `EDITOR` (create, change, publish and withdraw
+  maps) or `VIEWER` (read only).
+- **A person who joined keeps the account.** While they remain in the workspace, it is not deleted for
+  inactivity, however long you are silent. When the last person leaves, the `limits.inactivityDays` countdown
+  starts again from then.
+- The workspace holds at most `limits.peoplePerWorkspace` people, counting invitations not yet accepted.
+
+```sh
+snaphop-maps list-invitations
+snaphop-maps revoke-invitation INVITATION_ID
+snaphop-maps list-members
+snaphop-maps remove-member USER_ID --yes
+```
+
+- `list-invitations` lists the invitations not yet accepted, with each one's `id`; their links are not shown
+  again. `revoke-invitation` stops one, so its link no longer works.
+- `list-members` lists everyone in the workspace, you included, with each one's `userId` and role.
+- `remove-member` removes a person at once. Ask the user first, and pass `--yes` only once they have agreed. To
+  change someone's role, remove them and invite them again.
 
 ## Exit statuses and errors
 
@@ -129,6 +164,12 @@ Refusals you will meet:
 - `DRAFT_CHANGED`: run `get-map` again and redo the change.
 - `TOO_MANY_REQUESTS`: wait and try again later.
 - `MAP_LIMIT_REACHED`: the workspace is full. Offer to withdraw a map the user no longer needs.
+- `PEOPLE_LIMIT_REACHED`: the workspace holds as many people as it may. Revoke an invitation, or, with the
+  user's agreement, remove someone.
+- `ALREADY_A_MEMBER`: that address has joined already and needs no invitation. Run `list-members`.
+- `INVITATION_INVALID`: give a whole email address and a role of `ADMIN`, `EDITOR` or `VIEWER`.
+- `INVITATION_NOT_FOUND` or `MEMBER_NOT_FOUND`: the id is wrong, or the invitation was accepted, revoked or
+  replaced. Run `list-invitations` or `list-members`.
 - `REFUSED`: the service refused without a code of its own. `error.detail` holds what it said.
 - `API_KEY_INVALID`: the key is unknown, expired or revoked. Check `snaphop-maps credentials`. If `hint` says another key is
   kept, use that one. Only if there is no newer key, register again with `--overwrite`, which starts a new account

@@ -12,9 +12,9 @@ A vulnerability in the SnapHop Maps service itself is reported the same way. It 
 ## Threat model
 
 The CLI holds an agent's API key: the account's only credential, which the service shows once and can never
-recover. The key can create, publish and withdraw every map in the agent's workspace. The CLI sends it to a
-network service, keeps it on disk, and runs in environments where other processes, logs and transcripts may
-observe its arguments and output.
+recover. The key can create, publish and withdraw every map in the agent's workspace, and invite people into it
+and remove them. The CLI sends it to a network service, keeps it on disk, and runs in environments where other
+processes, logs and transcripts may observe its arguments and output.
 
 ## Boundaries
 

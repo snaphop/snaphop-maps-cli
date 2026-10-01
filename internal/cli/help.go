@@ -22,15 +22,17 @@ const start = `Start:
 
 Positions are [longitude, latitude]: longitude first. Text is plain, never HTML or Markdown.
 The account is deleted, and its maps taken down, after limits.inactivityDays days without a
-request; get-map returns a map's whole draft, to keep what you need. Replace the key with
-replace-key before its expiresAt. ` + "`snaphop-maps schema`" + ` describes all of this as JSON.`
+request; get-map returns a map's whole draft, to keep what you need. invite-person invites the
+person you work for by a link you give them, never by email, and while a person who joined
+remains, the account is not deleted. Replace the key with replace-key before its expiresAt.
+` + "`snaphop-maps schema`" + ` describes all of this as JSON.`
 
 // overview is the program's help.
 func overview() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n%s\n\nCommands:\n", about, start)
 	for _, cmd := range commands() {
-		fmt.Fprintf(&b, "  %-17s %s\n", cmd.Name, cmd.Summary)
+		fmt.Fprintf(&b, "  %-18s %s\n", cmd.Name, cmd.Summary)
 	}
 	b.WriteString("\nGlobal flags, taken before or after the command:\n")
 	writeFlags(&b, globalFlags)
