@@ -43,7 +43,7 @@ the tagged commit; check the download before running it:
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-Releases after v0.2.2 carry no build provenance attestation (ADR 0007). To be sure a binary matches the source,
+Releases after v0.2.2 carry no build provenance attestation (ADR 0007, ADR 0008). To be sure a binary matches the source,
 `go install` the tag or build it yourself.
 
 To build every platform yourself, run `make -j dist`. The binaries go in `dist/`, rebuilt each time, next to their
@@ -160,8 +160,8 @@ a key is never sent in the clear. The CLI follows no redirects.
 
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
-and runs `govulncheck`. No workflow releases: a maintainer's coding agent turns Unreleased in `CHANGELOG.md` into
-the next version, tags it and publishes it (ADR 0007). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md)
+and runs `govulncheck`. No workflow here releases: a maintainer presses SnapHop's release workflow, which turns
+Unreleased in `CHANGELOG.md` into the next version, tags it and publishes it (ADR 0008). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md)
 and [docs/decisions](docs/decisions).
 
 ## License

@@ -1,7 +1,9 @@
 # 0007 — Release from a maintainer's coding agent
 
 Accepted 2026-10-01. Supersedes [0002](0002-release-from-a-tag-with-provenance.md) and
-[0006](0006-cut-a-release-with-one-click.md).
+[0006](0006-cut-a-release-with-one-click.md). Superseded by
+[0008](0008-release-from-snaphop-build-deploy.md): snaphop-build-deploy's Maps CLI Release workflow cuts and
+publishes each release with one press.
 
 ## Context
 

@@ -62,8 +62,11 @@ http". Explain why in the body when it is not obvious.
 
 ## Releases
 
-No workflow releases. When a maintainer asks for a release, their coding agent cuts and publishes it from a clean,
-up-to-date checkout of `main`, with the maintainer's own GitHub credentials (ADR 0007):
+No workflow in this repository releases. A maintainer presses **Maps CLI Release** in SnapHop's private
+snaphop-build-deploy repository, which runs these steps from a clean checkout of `main` and publishes what it built (ADR
+0008). Its jobs that run this module's Go code hold no credentials, and every job runs on a fresh GitHub-hosted VM. When
+it cannot run, a maintainer, or their coding agent when asked, runs the same steps with the maintainer's own GitHub
+credentials:
 
 ```sh
 version=$(scripts/release-cut.sh auto)     # records Unreleased in CHANGELOG.md as the next version's section

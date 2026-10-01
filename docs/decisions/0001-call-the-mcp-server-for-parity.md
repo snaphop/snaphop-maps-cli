@@ -44,7 +44,8 @@ fail the call.
 - **Automatic retries.** Repeating `create_map` can make two maps, and repeating `publish_map` adds a release, so
   the CLI never retries by itself. Instead, each error says whether a repeat is safe.
 - **Publishing releases.** Superseded by [0002](0002-release-from-a-tag-with-provenance.md), then
-  [0007](0007-release-from-a-maintainers-agent.md): a maintainer's coding agent publishes each release.
+  [0007](0007-release-from-a-maintainers-agent.md), then [0008](0008-release-from-snaphop-build-deploy.md):
+  snaphop-build-deploy's Maps CLI Release workflow publishes each release.
 
 ## Consequences
 
