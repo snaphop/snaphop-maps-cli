@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"context"
 	"embed"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -110,9 +113,21 @@ func TestANewKeyThatCannotBeKeptIsStillPrinted(t *testing.T) {
 		t.Parallel()
 		s := newService(t, func(request) answer { return tool(map[string]any{"agentId": "a1"}) })
 		h := newHarness(t, s)
-		h.run("register-agent", "--name", "A").failure(t, exitNotSaved, "CREDENTIALS_NOT_SAVED")
+		// There is no key on standard output to give the user: the answer is one this program cannot read.
+		for args, hint := range map[string]string{"register-agent --name A": "may have been opened", "replace-key --api-key shk_old": "same key"} {
+			o := h.run(strings.Fields(args)...)
+			p := o.failure(t, exitTransport, "INVALID_RESPONSE")
+			if !strings.Contains(p.Message, "no apiKey") || !strings.Contains(p.Hint, hint) || p.OutcomeKnown == nil || *p.OutcomeKnown ||
+				decode(t, o.stdout)["agentId"] != "a1" {
+				t.Fatalf("%s: error %+v, stdout %s", args, p, o.stdout)
+			}
+		}
 		if _, ok := h.kept(); ok {
 			t.Fatal("an account without a key was kept")
+		}
+		h.stdout = failingWriter{}
+		if p := h.run("register-agent", "--name", "A").failure(t, exitUnwritten, "OUTPUT_FAILED"); strings.Contains(p.Hint, "is kept") {
+			t.Fatalf("error %+v", p)
 		}
 	})
 }
@@ -388,7 +403,7 @@ func TestAReplacedEnvironmentKeyIsNotSent(t *testing.T) {
 				h.keep(credentials.Account{APIKey: before, AgentID: "a1"})
 			}
 			h.run("replace-key").success(t)
-			if account, _ := h.kept(); account.APIKey != "shk_new" || account.ReplacedKeySHA256 != digest("shk_old") {
+			if account, _ := h.kept(); account.APIKey != "shk_new" || !account.Replaced(digest("shk_old")) {
 				t.Fatalf("kept %+v", account)
 			}
 			o := h.run("list-maps")
@@ -470,24 +485,77 @@ func TestRelativePathsAreReadAgainstTheWorkingDirectory(t *testing.T) {
 }
 
 // TestAKeyKeptUnderTheSchemesOwnPortIsFound: addresses once kept their scheme's own port, as in
-// --url https://maps.snaphop.ai:443, and now drop it. An account kept that way is still found.
+// --url https://maps.snaphop.ai:443, and now drop it. An account kept that way is still found, and a
+// new key for it takes its place under the address now, keeping the account's agent and workspace.
 func TestAKeyKeptUnderTheSchemesOwnPortIsFound(t *testing.T) {
 	t.Parallel()
-	s := newService(t, never(t))
+	s := newService(t, func(r request) answer {
+		if r.Tool == "register_agent" {
+			return tool(registered("shk_registered"))
+		}
+		return tool(replaced("shk_new"))
+	})
 	h := newHarness(t, s)
-	legacy := credentials.Store{Path: h.store().Path}
-	if err := legacy.Put("http://localhost:80/maps", credentials.Account{APIKey: "shk_legacy"}); err != nil {
+	// Every request goes to the fake service, whatever address it is sent to.
+	h.http = &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, network, s.server.Listener.Addr().String())
+	}}}
+	h.vars["SNAPHOP_MAPS_URL"] = "http://localhost"
+	former := credentials.Store{Path: h.store().Path}
+	if err := former.Put("http://localhost:80", credentials.Account{APIKey: "shk_old", AgentID: "a0", WorkspaceID: "w0"}); err != nil {
 		t.Fatal(err)
 	}
-	inv := &invocation{service: "http://localhost/maps"}
-	if kept, err := inv.kept(legacy); err != nil || kept == nil || kept.APIKey != "shk_legacy" {
-		t.Fatalf("kept = %+v, %v", kept, err)
+	h.run("register-agent", "--name", "A").failure(t, exitUsage, "ACCOUNT_ALREADY_KEPT")
+	h.run("replace-key").success(t)
+	if r := s.only(); r.Auth != "Bearer shk_old" {
+		t.Fatalf("request = %+v", r)
 	}
-	if kept, err := (&invocation{service: "http://localhost/other"}).kept(legacy); kept != nil || err != nil {
-		t.Fatalf("another path found %+v, %v", kept, err)
+	account, _ := h.kept()
+	if account.APIKey != "shk_new" || account.AgentID != "a0" || account.WorkspaceID != "w0" || !account.Replaced(digest("shk_old")) {
+		t.Fatalf("kept %+v", account)
 	}
-	if kept, err := (&invocation{service: h.service()}).kept(legacy); kept != nil || err != nil {
-		t.Fatalf("an address with its own port found %+v, %v", kept, err)
+	if data, _ := os.ReadFile(h.store().Path); strings.Contains(string(data), "localhost:80") {
+		t.Fatalf("the replaced key was left under the former address: %s", data)
 	}
-	h.run("register-agent", "--name", "A", "--url", "http://localhost:80/maps").failure(t, exitUsage, "ACCOUNT_ALREADY_KEPT")
+	// An overwrite replaces the account kept under the former address too.
+	h.vars["SNAPHOP_MAPS_CREDENTIALS"] = filepath.Join(h.dir, "former.json")
+	former = h.store()
+	if err := former.Put("http://localhost:80", credentials.Account{APIKey: "shk_old"}); err != nil {
+		t.Fatal(err)
+	}
+	h.vars["SNAPHOP_MAPS_URL"] = "http://localhost:80"
+	h.run("register-agent", "--name", "A", "--overwrite").success(t)
+	if data, _ := os.ReadFile(h.store().Path); strings.Contains(string(data), "localhost:80") || strings.Contains(string(data), "shk_old") {
+		t.Fatalf("the overwritten account was left under the former address: %s", data)
+	}
+}
+
+// TestAnEnvironmentKeyReplacedLongAgoIsNotSent: $SNAPHOP_MAPS_API_KEY holds the first key, and
+// replace-key has run twice since. The first key is still recognised as replaced, and never sent.
+func TestAnEnvironmentKeyReplacedLongAgoIsNotSent(t *testing.T) {
+	t.Parallel()
+	next := 0
+	s := newService(t, func(r request) answer {
+		if r.Tool == "replace_key" {
+			next++
+			return tool(replaced(fmt.Sprintf("shk_key%d", next)))
+		}
+		return tool(map[string]any{"maps": []any{}})
+	})
+	h := newHarness(t, s)
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "shk_key0"
+	h.keep(credentials.Account{APIKey: "shk_key0", AgentID: "a1"})
+	h.run("replace-key").success(t)
+	h.run("replace-key").success(t)
+	h.run("list-maps").success(t)
+	requests := s.received()
+	for i, want := range []string{"shk_key0", "shk_key1", "shk_key2"} {
+		if requests[i].Auth != "Bearer "+want {
+			t.Fatalf("request %d sent %q, want %s", i, requests[i].Auth, want)
+		}
+	}
+	account, _ := h.kept()
+	if account.APIKey != "shk_key2" || account.AgentID != "a1" || !account.Replaced(digest("shk_key0")) || !account.Replaced(digest("shk_key1")) {
+		t.Fatalf("kept %+v", account)
+	}
 }

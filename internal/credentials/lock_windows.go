@@ -20,11 +20,15 @@ const (
 	errorLockViolation syscall.Errno = 33
 )
 
-// tryLockFile takes an exclusive lock on the file's first byte if no one else holds it. The system
-// releases it if the process ends.
-func tryLockFile(file *os.File) (bool, error) {
+// tryLockFile takes a lock on the file's first byte, exclusive or shared, if no one else holds one
+// that conflicts. The system releases it if the process ends.
+func tryLockFile(file *os.File, exclusive bool) (bool, error) {
+	var flags uintptr = lockfileFailImmediately
+	if exclusive {
+		flags |= lockfileExclusiveLock
+	}
 	var overlapped syscall.Overlapped
-	ok, _, err := procLockFileEx.Call(file.Fd(), lockfileExclusiveLock|lockfileFailImmediately, 0, 1, 0, uintptr(unsafe.Pointer(&overlapped)))
+	ok, _, err := procLockFileEx.Call(file.Fd(), flags, 0, 1, 0, uintptr(unsafe.Pointer(&overlapped)))
 	if ok != 0 {
 		return true, nil
 	}

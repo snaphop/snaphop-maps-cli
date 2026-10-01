@@ -110,7 +110,8 @@ An assistant without a shell can use the same service as an MCP server at `https
 On success, standard output holds one JSON document: the tool's structured result, exactly as the service returned
 it. `--pretty` indents it. On failure, standard error holds `{"error": {"code", "message", "hint", ...}}`, one JSON
 document per line, `--pretty` or not. `code` is
-the service's own code when the service refused, and `hint` is the next step to take. A warning, such as a key
+the service's own code when the service refused, with every field the service gave, and `hint` is the next step to
+take: this program's for the codes it knows, and otherwise the service's own. A warning, such as a key
 about to expire, is `{"warning": {...}}` on standard error and does not change the exit status.
 
 | Status | Meaning                                                                                                 |
@@ -137,8 +138,8 @@ other's keys. It holds one account per service address, and a key is only ever s
 A command sends the first key it finds: `--api-key`, then `$SNAPHOP_MAPS_API_KEY`, then the file. The key goes in
 an `Authorization` bearer header. `$SNAPHOP_MAPS_API_KEY` is only sent to the service the environment names,
 `$SNAPHOP_MAPS_URL` or else `https://maps.snaphop.ai`, so `--url` alone cannot send it anywhere else (ADR 0004).
-Once `replace-key` has replaced the key the variable holds, the kept key is sent instead, with the warning
-`ENVIRONMENT_KEY_REPLACED`.
+Once `replace-key` has replaced the key the variable holds, however many replacements ago, the kept key is sent
+instead, with the warning `ENVIRONMENT_KEY_REPLACED`.
 A key never appears in an error or a warning: one echoed back, by a mistyped command line or by an error body, is
 shown as `[REDACTED]`. `register-agent` will not replace an account already kept for the same service
 unless given `--overwrite`. `replace-key` only replaces the key it was called with. A replaced key keeps working

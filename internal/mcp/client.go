@@ -183,6 +183,16 @@ func (c *Client) CallTool(ctx context.Context, name string, arguments map[string
 			}
 		}
 	}
+	if (len(structured) == 0 || string(structured) == "null") && decoded.IsError {
+		// A refusal in words alone: its text, as a JSON string, is what the tool said.
+		var text []string
+		for _, part := range decoded.Content {
+			if part.Type == "text" {
+				text = append(text, part.Text)
+			}
+		}
+		structured, _ = json.Marshal(strings.Join(text, "\n"))
+	}
 	if len(structured) == 0 || string(structured) == "null" {
 		return ToolResult{}, &Error{Code: "INVALID_RESPONSE", Message: "The tool's result carries no structured content.", Status: http.StatusOK}
 	}
@@ -248,14 +258,16 @@ func (c *Client) httpError(resp *http.Response, data []byte) *Error {
 	return failure
 }
 
-// excerpt is the start of a body, on one line and without secrets, for an error message.
+// excerpt is the start of a body, on one line and without secrets, for an error message. Bytes that
+// are not UTF-8, as in a page in another encoding, are each shown as U+FFFD.
 func (c *Client) excerpt(data []byte) string {
-	text := strings.Join(strings.Fields(string(data)), " ")
+	text := strings.ToValidUTF8(strings.Join(strings.Fields(string(data)), " "), "\uFFFD")
 	if c.Redact != nil {
 		text = c.Redact(text)
 	}
 	if len(text) > 200 {
 		text = text[:200]
+		// Only a character the cut split can be invalid now.
 		for !utf8.ValidString(text) {
 			text = text[:len(text)-1]
 		}

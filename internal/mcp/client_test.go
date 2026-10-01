@@ -105,6 +105,32 @@ func TestCallToolReadsTextWhenThereIsNoStructuredContent(t *testing.T) {
 	}
 }
 
+// TestARefusalInWordsAloneIsARefusal is a tool that refuses with text that is not JSON: what it said
+// is the result, and it is still a refusal, not an answer that cannot be read.
+func TestARefusalInWordsAloneIsARefusal(t *testing.T) {
+	t.Parallel()
+	for body, want := range map[string]string{
+		`{"isError":true,"content":[{"type":"text","text":"Bad id"},{"type":"image","text":"x"},{"type":"text","text":"Give another"}]}`: `"Bad id\nGive another"`,
+		`{"isError":true,"structuredContent":null}`: `""`,
+	} {
+		client := answering(200, nil, `{"jsonrpc":"2.0","id":1,"result":`+body+`}`)
+		result, err := client.CallTool(context.Background(), "get_map", nil, "k")
+		if err != nil || !result.IsError || string(result.Structured) != want {
+			t.Fatalf("CallTool = %s, %v, %v; want %s", result.Structured, result.IsError, err, want)
+		}
+	}
+}
+
+// TestAnExcerptKeepsWhatIsNotUTF8 is a page in another encoding: each byte that is not UTF-8 is shown
+// as U+FFFD, and the rest of the excerpt is kept.
+func TestAnExcerptKeepsWhatIsNotUTF8(t *testing.T) {
+	t.Parallel()
+	_, err := answering(502, nil, "Bad \xe9 gateway "+strings.Repeat("x", 300)).Call(context.Background(), "ping", nil, "")
+	if err == nil || !strings.HasPrefix(err.Message, "Bad Gateway: Bad � gateway xxx") || !strings.HasSuffix(err.Message, "x...") {
+		t.Fatalf("error = %+v", err)
+	}
+}
+
 func TestFailuresOfTheExchange(t *testing.T) {
 	t.Parallel()
 	longPage := "<html>x" + strings.Repeat("é", 150) + "</html>" // cut inside a character

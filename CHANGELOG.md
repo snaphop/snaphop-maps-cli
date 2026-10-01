@@ -16,9 +16,10 @@ section with a `### Security` subsection is a security release, and its notes sa
   registering and then failing to keep the key.
 - **A replaced `$SNAPHOP_MAPS_API_KEY` is no longer sent.** After `replace-key`, the environment's old key went on
   being sent and the kept new one never was; when the old one expired, the advice to register again with
-  `--overwrite` replaced the new one. The file now keeps the replaced key's digest, a command sends the kept key
-  in its place with the warning `ENVIRONMENT_KEY_REPLACED`, and a refused key never leads to that advice while
-  another key is kept.
+  `--overwrite` replaced the new one. The file now keeps the digests of the keys replaced, the last 64, so the
+  variable's key is recognised however many replacements ago it was; a command sends the kept key in its place
+  with the warning `ENVIRONMENT_KEY_REPLACED`, and a refused key never leads to that advice while another key is
+  kept.
 - **No part of a key reaches standard error.** An error body is redacted before it is cut to 200 characters, which
   could leave the start of a key; anything shaped like a SnapHop key (`sh_agent_…`) is redacted, including one
   typed where the command's name goes; and an unknown flag before the command is refused by its name alone.
@@ -38,7 +39,9 @@ section with a `### Security` subsection is a security release, and its notes sa
 - A JSON flag followed by a stray `]` or `}` was sent as valid; it is now `INVALID_JSON`. `--args '{"apiKey": null}'`
   sent no key at all; `apiKey` that is not a key is now refused.
 - `$SNAPHOP_MAPS_API_KEY` was not sent with `--url https://maps.snaphop.ai:443`: a scheme's own port is now dropped
-  from a service address. A key kept under an address with `:443` or `:80` is found under the address without it.
+  from a service address. A key kept under an address with `:443` or `:80` is found under the address without it,
+  and moves there with its agent, workspace and every other field when `replace-key` or `register-agent
+  --overwrite` replaces it, so the old key is not left behind.
 - `help`, `version`, `schema` and `skill` failed when `$SNAPHOP_MAPS_URL` or `--timeout` was invalid; they no
   longer read either. `INVALID_URL` names `$SNAPHOP_MAPS_URL` when that is where the address came from.
 - `--pretty` spread errors over several lines; standard error is now always one JSON document per line.
@@ -46,13 +49,25 @@ section with a `### Security` subsection is a security release, and its notes sa
 - `skill install` without `--project` failed when the home skills directory, such as `~/.claude`, is a link a
   dotfile manager made. Only a project's links are now confined.
 - The skill files and `skill pack`'s zip were always `0644`; they now honour the umask.
-- On Windows, a command replacing the credentials file could fail while another read it. Reads now take the lock.
+- On Windows, a command replacing the credentials file could fail while another read it. Reads now take the lock,
+  shared, so that commands reading at once do not queue, and each command reads the file once. On a file system
+  that cannot lock, such as some network ones, reading still works; keeping a key is refused, as before.
 - `--credentials`, `$SNAPHOP_MAPS_CREDENTIALS` and `--project` are read relative to the working directory a run
   is given, as `@file` and `--output` are. A global flag written `--url=…` before the command is now read.
 - The credentials file keeps fields a newer build wrote. `schema` lists no flags as `[]`, not `null`, and says that
   `call` sends a key and `skill` writes files. `SKILL.md` covers exit statuses 6 and 7, `INPUT_TOO_LARGE`, where
   the environment's key is sent, and switches.
 - Answers sent as server-sent events are read, and a deadline that passes while an answer arrives is `TIMEOUT`.
+- A refusal now reaches standard error with every field the service gave, and the service's own `hint` when this
+  program has none for its code. A refusal in plain text is `REFUSED` with the text as `detail`, exit status 3,
+  not an unreadable answer that may have been carried out.
+- An answer to `register-agent` or `replace-key` without an `apiKey` is `INVALID_RESPONSE`, exit status 4, not
+  `CREDENTIALS_NOT_SAVED`, whose hint pointed to a key that was not there.
+- A string flag's value that is a switch's name, as in `update-map --name publish true`, is no longer taken for that
+  switch and refused. An unknown flag with no command, such as `snaphop-maps --verison`, is now `INVALID_FLAG`, exit
+  status 2, not the help with exit status 0.
+- An error body with a byte that is not UTF-8, such as a page in Latin-1, lost everything from that byte on; each
+  such byte is now shown as U+FFFD.
 - `make dist` rebuilt nothing once `dist/` held a file; it now rebuilds every file. The coverage floor counted a
   rounded percentage and passed at 99.95%; it now counts statements. macOS and Windows now run the coverage floor
   too, and `scripts/ci-local.sh` checks staged changes for whitespace errors.

@@ -128,6 +128,7 @@ Refusals you will meet:
 - `DRAFT_CHANGED`: run `get-map` again and redo the change.
 - `TOO_MANY_REQUESTS`: wait and try again later.
 - `MAP_LIMIT_REACHED`: the workspace is full. Offer to withdraw a map the user no longer needs.
+- `REFUSED`: the service refused without a code of its own. `error.detail` holds what it said.
 - `API_KEY_INVALID`: the key is expired or revoked. Check `snaphop-maps credentials`. If `hint` says another key is
   kept, use that one. Only if there is no newer key, register again with `--overwrite`, which starts a new account
   and replaces the kept key.

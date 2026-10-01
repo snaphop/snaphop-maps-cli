@@ -8,10 +8,14 @@ import (
 	"syscall"
 )
 
-// tryLockFile takes an exclusive lock on the file if no one else holds it. The system releases it if
-// the process ends.
-func tryLockFile(file *os.File) (bool, error) {
-	err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+// tryLockFile takes a lock on the file, exclusive or shared, if no one else holds one that conflicts.
+// The system releases it if the process ends.
+func tryLockFile(file *os.File, exclusive bool) (bool, error) {
+	how := syscall.LOCK_SH
+	if exclusive {
+		how = syscall.LOCK_EX
+	}
+	err := syscall.Flock(int(file.Fd()), how|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
 		return false, nil
 	}

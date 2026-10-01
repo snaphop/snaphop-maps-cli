@@ -294,38 +294,39 @@ func TestServiceAddresses(t *testing.T) {
 	}
 }
 
+// TestTheServiceRefusal: a refusal reaches standard error as the service gave it, every field
+// included, with this program's next step for its code, or else the service's own.
 func TestTheServiceRefusal(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name       string
-		structured any
-		code       string
-		hint       bool
+		name   string
+		answer answer
+		code   string
+		hint   string
+		stderr string
 	}{
-		{"known code", map[string]any{"error": map[string]any{"code": "MAP_INVALID", "message": "The map is invalid",
-			"fields": map[string]any{"markers[0].position": "is [longitude, latitude]"}}}, "MAP_INVALID", true},
-		{"unknown code", map[string]any{"error": map[string]any{"code": "SOMETHING_NEW", "message": "New"}}, "SOMETHING_NEW", false},
-		{"no error object", map[string]any{"why": "unknown"}, "REFUSED", false},
+		{"known code", refusal(map[string]any{"error": map[string]any{"code": "MAP_INVALID", "message": "The map is invalid", "hint": "the service's",
+			"fields": map[string]any{"markers[0].position": "is [longitude, latitude]"}}}), "MAP_INVALID", "[longitude, latitude]", `"markers[0].position"`},
+		{"unknown code", refusal(map[string]any{"error": map[string]any{"code": "SOMETHING_NEW", "message": "New"}}), "SOMETHING_NEW", "", `"message":"New"`},
+		{"unknown code with the service's hint", refusal(map[string]any{"error": map[string]any{"code": "SOMETHING_NEW", "message": "New", "hint": "Do Y", "limit": 5}}),
+			"SOMETHING_NEW", "Do Y", `"limit":5`},
+		{"a code that is not a string", refusal(map[string]any{"error": map[string]any{"code": 5}}), "REFUSED", "", `"detail":{"error":{"code":5}}`},
+		{"no error object", refusal(map[string]any{"why": "unknown"}), "REFUSED", "", `"detail":{"why":"unknown"}`},
+		{"words alone", result(map[string]any{"isError": true, "content": []any{map[string]any{"type": "text", "text": "Bad id"}}}), "REFUSED", "", `"detail":"Bad id"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s := newService(t, func(request) answer { return refusal(tc.structured) })
+			s := newService(t, func(request) answer { return tc.answer })
 			h := newHarness(t, s)
 			h.vars["SNAPHOP_MAPS_API_KEY"] = "k"
 			o := h.run("create-map", "--name", "N")
 			p := o.failure(t, exitRefused, tc.code)
-			if (p.Hint != "") != tc.hint {
-				t.Fatalf("hint = %q", p.Hint)
+			if (p.Hint == "") != (tc.hint == "") || !strings.Contains(p.Hint, tc.hint) {
+				t.Fatalf("hint = %q, want %q", p.Hint, tc.hint)
 			}
-			if o.stdout != "" {
-				t.Fatalf("stdout = %q", o.stdout)
-			}
-			if tc.code == "MAP_INVALID" && !strings.Contains(string(p.Fields), "markers[0].position") {
-				t.Fatalf("fields = %s", p.Fields)
-			}
-			if tc.code == "REFUSED" && !strings.Contains(string(p.Detail), "unknown") {
-				t.Fatalf("detail = %s", p.Detail)
+			if o.stdout != "" || !strings.Contains(o.stderr, tc.stderr) {
+				t.Fatalf("stdout = %q, stderr = %s, want %s", o.stdout, o.stderr, tc.stderr)
 			}
 		})
 	}
@@ -733,6 +734,8 @@ func TestCommandLinesThatWouldSendTheWrongThing(t *testing.T) {
 		{"apiKey null", []string{"list-maps", "--args", `{"apiKey": null}`}, "INVALID_FLAG", "apiKey"},
 		{"apiKey empty", []string{"list-maps", "--args", `{"apiKey": ""}`}, "INVALID_FLAG", "apiKey"},
 		{"a command flag before the command", []string{"--name", "N", "create-map"}, "INVALID_FLAG", "--name is not a flag"},
+		{"a mistyped flag and no command", []string{"--verison"}, "INVALID_FLAG", "--verison is not a flag"},
+		{"an unknown flag and no command", []string{"--pretty", "--json=1"}, "INVALID_FLAG", "--json is not a flag"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -759,6 +762,11 @@ func TestLinesThatMeanWhatTheySay(t *testing.T) {
 		{[]string{"get-map", "true"}, `{"id":"true"}`},
 		{[]string{"get-map", "--timeout", "5s", "false"}, `{"id":"false"}`},
 		{[]string{"update-map", "--publish=true", "false"}, `{"id":"false","publish":true}`},
+		// A value that is a switch's name is a value, not that switch.
+		{[]string{"update-map", "--name", "publish", "true"}, `{"id":"true","name":"publish"}`},
+		{[]string{"update-map", "--name", "--publish", "true"}, `{"id":"true","name":"--publish"}`},
+		{[]string{"get-map", "--api-key", "pretty", "true"}, `{"id":"true"}`},
+		{[]string{"get-map", "--pretty=false", "true"}, `{"id":"true"}`},
 		{[]string{"--help", "get-map", "m1"}, ""},
 	}
 	for _, tc := range cases {

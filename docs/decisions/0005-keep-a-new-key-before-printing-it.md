@@ -30,8 +30,10 @@ documented way to lose a kept key.
   error now comes after the answer.
 
 **A key that the kept key replaced is not sent.** When `replace-key` keeps a new key, the account also keeps the
-SHA-256 of the key it replaced (`replacedKeySha256`). A later command whose `$SNAPHOP_MAPS_API_KEY` has that digest
-sends the kept key instead, and warns `ENVIRONMENT_KEY_REPLACED`. `--api-key` is still sent as given.
+SHA-256 of the key it replaced, ahead of those that key had replaced (`replacedKeysSha256`, newest first, at most
+64). A later command whose `$SNAPHOP_MAPS_API_KEY` has one of those digests sends the kept key instead, and warns
+`ENVIRONMENT_KEY_REPLACED`: the variable set once goes on being recognised however many times the key is replaced
+since. `--api-key` is still sent as given.
 
 A refused key from the flag or the environment, while another key is kept for the service, gets a hint to leave the
 flag or variable out, not to register again. An expiry warning is only given for the kept key when it is the key
@@ -45,6 +47,9 @@ sent, and `credentials` says whether it is (`sendsKeptKey`).
   may hold it, and standard error is often logged.
 - **Keeping the replaced key itself.** Its digest is enough to recognise it, and the file holds no key that no
   longer works.
+- **Remembering every replaced key without end.** 64 digests cover more than five years of monthly replacements
+  and keep the file small. A key replaced longer ago than that is sent again, and its refusal's hint points to the
+  kept key.
 
 ## Consequences
 

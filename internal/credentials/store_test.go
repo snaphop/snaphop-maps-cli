@@ -139,7 +139,7 @@ func TestPutReportsEachFailedStep(t *testing.T) {
 		"directory is a file": {Store{Path: filepath.Join(dir, "f", "credentials.json"),
 			mkdirAll: func(string, os.FileMode) error { return nil }}, "cannot lock"},
 		"lock": {Store{Path: filepath.Join(dir, "l", "credentials.json"),
-			tryLock: func(*os.File) (bool, error) { return false, failing }}, "cannot lock"},
+			tryLock: func(*os.File, bool) (bool, error) { return false, failing }}, "cannot lock"},
 		// A name the file system takes, but not with the lock's suffix added.
 		"lock file": {Store{Path: filepath.Join(dir, "n", strings.Repeat("c", 252))}, "cannot lock"},
 		"write": {Store{Path: filepath.Join(dir, "w", "credentials.json"),
@@ -275,7 +275,7 @@ func TestAHeldLockIsWaitedForAWhile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer holder.Close()
-	if locked, err := tryLockFile(holder); !locked || err != nil {
+	if locked, err := tryLockFile(holder, true); !locked || err != nil {
 		t.Skipf("this system cannot lock: %v, %v", locked, err)
 	}
 	for name, call := range map[string]func() error{
@@ -306,7 +306,7 @@ func TestTryLockReportsAFileItCannotLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = file.Close()
-	if locked, err := tryLockFile(file); locked || err == nil {
+	if locked, err := tryLockFile(file, true); locked || err == nil {
 		t.Fatalf("tryLockFile on a closed file = %v, %v", locked, err)
 	}
 }
@@ -365,5 +365,116 @@ func TestCommandsKeepingKeysAtOnceLoseNone(t *testing.T) {
 		if got, ok, err := store.Get(fmt.Sprintf("https://service-%d", i)); !ok || err != nil || got.APIKey != fmt.Sprintf("shk_%d", i) {
 			t.Errorf("service %d kept %+v, %v, %v", i, got, ok, err)
 		}
+	}
+}
+
+// TestAFileSystemThatCannotLockIsStillRead is a credentials file on a file system without locks, such
+// as some network ones: no writer can take the lock to replace the file, so a reader reads it as it is.
+func TestAFileSystemThatCannotLockIsStillRead(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	if err := (Store{Path: path}).Put(service, Account{APIKey: "shk_kept"}); err != nil {
+		t.Fatal(err)
+	}
+	unsupported := Store{Path: path, tryLock: func(*os.File, bool) (bool, error) { return false, errors.New("no locks available") }}
+	if got, ok, err := unsupported.Get(service); !ok || err != nil || got.APIKey != "shk_kept" {
+		t.Fatalf("Get = %+v, %v, %v", got, ok, err)
+	}
+	if err := unsupported.Put(service, Account{APIKey: "shk_new"}); err == nil || !strings.Contains(err.Error(), "no locks available") {
+		t.Fatalf("Put error = %v", err)
+	}
+}
+
+// TestReadersShareTheLock holds the lock as a reader would: other readers read meanwhile, and a writer
+// waits for it.
+func TestReadersShareTheLock(t *testing.T) {
+	t.Parallel()
+	store := Store{Path: filepath.Join(t.TempDir(), "credentials.json"), Wait: 50 * time.Millisecond}
+	if err := store.Put(service, Account{APIKey: "shk_kept"}); err != nil {
+		t.Fatal(err)
+	}
+	reader, err := os.OpenFile(store.Path+".lock", os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	if locked, err := tryLockFile(reader, false); !locked || err != nil {
+		t.Skipf("this system cannot lock: %v, %v", locked, err)
+	}
+	if got, ok, err := store.Get(service); !ok || err != nil || got.APIKey != "shk_kept" {
+		t.Fatalf("Get = %+v, %v, %v", got, ok, err)
+	}
+	if err := store.Put(service, Account{APIKey: "shk_new"}); err == nil || !strings.Contains(err.Error(), "held its lock") {
+		t.Fatalf("Put error = %v", err)
+	}
+}
+
+// TestAnAccountRemembersEveryKeyItReplaced: a key replaced two replacements ago, still given in the
+// environment, must be recognised as replaced too.
+func TestAnAccountRemembersEveryKeyItReplaced(t *testing.T) {
+	t.Parallel()
+	account := Account{APIKey: "k0", AgentID: "a1", WorkspaceID: "w1"}
+	for i := 1; i <= MaxReplacedKeys+1; i++ {
+		account.Replace(Account{APIKey: fmt.Sprintf("k%d", i), KeyID: fmt.Sprintf("id%d", i), AgentID: "ignored"}, fmt.Sprintf("d%d", i-1))
+	}
+	if account.APIKey != fmt.Sprintf("k%d", MaxReplacedKeys+1) || account.AgentID != "a1" || account.WorkspaceID != "w1" ||
+		len(account.ReplacedKeysSHA256) != MaxReplacedKeys {
+		t.Fatalf("account = %+v", account)
+	}
+	if !account.Replaced(fmt.Sprintf("d%d", MaxReplacedKeys)) || !account.Replaced("d1") || account.Replaced("d0") {
+		t.Fatalf("remembers %v", account.ReplacedKeysSHA256)
+	}
+}
+
+// TestAnAccountKeptUnderAFormerSpellingIsFoundAndMoved: addresses once kept their scheme's own port,
+// as in https://maps.snaphop.ai:443, and now drop it. Such an account is found, and is moved to the
+// address's spelling now when it changes, with everything it held, so that no stale key is left.
+func TestAnAccountKeptUnderAFormerSpellingIsFoundAndMoved(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "credentials.json")
+	const former = `{"version": 1, "accounts": {
+	  "http://localhost:80/maps": {"apiKey": "shk_old", "agentId": "a1", "workspaceId": "w1", "label": "mine"},
+	  "https://other.example:443": {"apiKey": "shk_other"}}}`
+	if err := os.WriteFile(path, []byte(former), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Path: path}
+	if got, ok, err := store.Get("http://localhost/maps"); !ok || err != nil || got.APIKey != "shk_old" {
+		t.Fatalf("Get = %+v, %v, %v", got, ok, err)
+	}
+	for _, elsewhere := range []string{"http://localhost/other", "http://localhost:8080/maps", "ftp://localhost/maps", "%zz"} {
+		if got, ok, err := store.Get(elsewhere); ok || err != nil {
+			t.Fatalf("Get(%s) = %+v, %v, %v", elsewhere, got, ok, err)
+		}
+	}
+	if err := store.Update("http://localhost/maps", func(kept Account, found bool) (Account, error) {
+		kept.APIKey = "shk_new"
+		return kept, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	for _, want := range []string{`"http://localhost/maps": {`, `"apiKey": "shk_new"`, `"agentId": "a1"`, `"workspaceId": "w1"`, `"label": "mine"`, `"https://other.example:443"`} {
+		if !strings.Contains(string(data), want) {
+			t.Fatalf("the file lacks %s: %s", want, data)
+		}
+	}
+	if strings.Contains(string(data), "localhost:80") || strings.Contains(string(data), "shk_old") {
+		t.Fatalf("the former spelling was left behind: %s", data)
+	}
+	// With both spellings kept, the one now is found and changed, and the former is left as it is.
+	both := filepath.Join(t.TempDir(), "credentials.json")
+	if err := os.WriteFile(both, []byte(`{"version": 1, "accounts": {"https://b.example": {"apiKey": "shk_now"}, "https://b.example:443": {"apiKey": "shk_former"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store = Store{Path: both}
+	if got, _, _ := store.Get("https://b.example"); got.APIKey != "shk_now" {
+		t.Fatalf("Get = %+v", got)
+	}
+	if err := store.Put("https://b.example", Account{APIKey: "shk_next"}); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(both); !strings.Contains(string(data), "shk_former") || !strings.Contains(string(data), "shk_next") {
+		t.Fatalf("the file holds %s", data)
 	}
 }
