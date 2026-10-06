@@ -30,6 +30,7 @@ class SecurityGateTest(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(check, "ROOT", self.root).start()
         patch.object(check, "REPORTS", self.reports).start()
+        patch.dict(check.os.environ, {"GITHUB_RUN_ID": "local", "GITHUB_RUN_ATTEMPT": "1"}).start()
 
     def entry(self):
         return dict(id="CVE-2099-1234", expired_at="2099-12-31", owner="Security team",
@@ -116,6 +117,20 @@ class SecurityGateTest(unittest.TestCase):
             check.cleanup()
             self.assertEqual(run.call_count, 1)
             self.assertEqual(run.call_args.args[0][:3], ["docker", "image", "inspect"])
+
+    def test_cleanup_uses_current_ci_run_and_attempt(self):
+        image = "snaphop-test-app:security-12345-2-0123456789ab"
+        with patch.dict(check.os.environ, {"GITHUB_RUN_ID": "12345", "GITHUB_RUN_ATTEMPT": "2"}), patch.object(check.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run:
+            (self.reports / "images.json").write_text(json.dumps([image]))
+            check.cleanup()
+            self.assertEqual(run.call_args.args[0], ["docker", "image", "rm", "--force", image])
+            for other in ("snaphop-test-app:security-12344-2-0123456789ab",
+                          "snaphop-test-app:security-12345-1-0123456789ab"):
+                run.reset_mock()
+                (self.reports / "images.json").write_text(json.dumps([other]))
+                with self.assertRaises(ValueError):
+                    check.cleanup()
+                run.assert_not_called()
 
     def test_cleanup_rejects_unrelated_images(self):
         (self.reports / "images.json").write_text('["production:latest"]')
