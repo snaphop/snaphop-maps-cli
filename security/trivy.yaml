@@ -1,0 +1,21 @@
+# Source dependencies include lockfiles and Maven POMs, including child modules.
+# Generated tool trees and local credentials are not repository inputs.
+scan:
+  # Both hosts are Maven Central. Reuse ~/.m2/repository when available and
+  # prefer its alternate endpoint to avoid throttling concurrent scanner jobs.
+  maven:
+    mirrors:
+      - source: https://repo.maven.apache.org/maven2/
+        targets:
+          - https://repo1.maven.org/maven2/
+  skip-dirs:
+    - "**/.git"
+    - "**/node_modules"
+    - "**/.venv"
+    - "**/.tools"
+    - "**/target"
+    - "**/dist"
+    - "**/test-results"
+    - "**/security-reports"
+  skip-files:
+    - "**/.env"

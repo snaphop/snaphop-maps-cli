@@ -4,3 +4,7 @@ coverage.out
 *.test
 credentials.json
 .env
+
+# Local security scan output
+/security-reports/
+/security/__pycache__/

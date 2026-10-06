@@ -5,6 +5,13 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+
+### Security
+
+- Verify now checks source dependencies, secrets and configuration with pinned Trivy,
+  builds and scans owned containers where applicable, and retains reports and SBOMs
+  for 30 days. HIGH/CRITICAL findings and invalid or expired exceptions block verification.
+
 ## 0.4.0 — 2026-10-01
 
 ### Added
