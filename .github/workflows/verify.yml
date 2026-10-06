@@ -78,3 +78,29 @@ jobs:
           name: snaphop-maps-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/snaphop-maps-*
           retention-days: 7
+
+  security:
+    name: Security checks
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Security policy regression tests
+        run: python3 -m unittest discover -s security -p 'test_*.py' -v
+      - name: Dependency, secret, configuration and container policy
+        run: python3 security/check.py
+      - name: Upload security reports and SBOMs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: security-reports/*.json
+          retention-days: 30
+          if-no-files-found: warn
+      - name: Remove job-scoped security images
+        if: always()
+        run: python3 security/check.py --cleanup
