@@ -81,7 +81,9 @@ def scan(target, name, image=False, sbom=False):
         command += ["--volume", "/var/run/docker.sock:/var/run/docker.sock"]
     command += [TRIVY, "image" if image else "fs", "--quiet", "--no-progress",
                 "--config", "/project/security/trivy.yaml", "--ignorefile", "/project/security/exceptions.yaml",
-                "--timeout", "15m", "--include-dev-deps"]
+                "--timeout", "15m"]
+    if not image:
+        command += ["--include-dev-deps"]
     if sbom:
         command += ["--scanners", "vuln", "--format", "cyclonedx"]
     else:

@@ -140,6 +140,7 @@ class SecurityGateTest(unittest.TestCase):
         command = run.call_args.args[0]
         self.assertIn("/var/run/docker.sock:/var/run/docker.sock", command)
         self.assertIn("--image-src", command)
+        self.assertNotIn("--include-dev-deps", command)
         self.assertEqual(command[-3:], ["--image-src", "docker", "local:fixture"])
         self.assertNotIn(".m2/settings.xml", " ".join(command))
 
