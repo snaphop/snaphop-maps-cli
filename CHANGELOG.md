@@ -12,6 +12,10 @@ section with a `### Security` subsection is a security release, and its notes sa
   verification, embedding guidance, test traceability and a decision index, following SnapHop Maps' structure
   without its design-system update workflow (ADR 0010).
 
+### Changed
+
+- Verify no longer fails when an artifact upload is refused. Every upload step continues on error, so the checks alone decide the result. On 11 October the snaphop organization went over its artifact storage quota, and every run failed at its upload although its checks had passed; a refused upload now shows as a warning on the run.
+
 ### Security
 
 - The full local handoff check now includes security policy regression tests and the pinned Trivy gate through

@@ -74,6 +74,8 @@ jobs:
           if [ "$GOOS" = windows ]; then suffix=.exe; fi
           make "dist/snaphop-maps-$GOOS-$GOARCH$suffix"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        # A refused upload, such as one over the artifact storage quota, must not fail the checks.
+        continue-on-error: true
         with:
           name: snaphop-maps-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/snaphop-maps-*
@@ -96,6 +98,8 @@ jobs:
       - name: Upload security reports and SBOMs
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        # A refused upload, such as one over the artifact storage quota, must not fail the checks.
+        continue-on-error: true
         with:
           name: security-${{ github.run_id }}-${{ github.run_attempt }}
           path: security-reports/*.json
