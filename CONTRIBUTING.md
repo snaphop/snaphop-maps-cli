@@ -3,7 +3,11 @@
 Thank you for helping with the SnapHop Maps CLI. Read [AGENTS.md](AGENTS.md) for the invariants every change keeps,
 [SECURITY.md](SECURITY.md) before touching how keys are found, kept or sent, and the decision records in
 [docs/decisions](docs/decisions) before changing how the CLI reaches the service. AI coding agents follow the same
-rules; `CLAUDE.md` and `GEMINI.md` point them to `AGENTS.md`.
+rules; `CLAUDE.md` and `GEMINI.md` point them to `AGENTS.md`. Read [REQUIREMENTS.md](REQUIREMENTS.md),
+[DESIGN.md](DESIGN.md), [CODE_REVIEW.md](CODE_REVIEW.md) and the [documentation index](docs/README.md) for the
+product contract, command-line design, review criteria and supporting runbooks. Whole-queue reviews use the
+four repository skills under [`.agents/skills/`](.agents/skills/), also linked under `.claude/skills/`;
+these are separate from the CLI's embedded usage skill.
 
 **Never report a vulnerability in an issue or pull request.** This repository is public. Email
 <security@snaphop.com> as [SECURITY.md](SECURITY.md) describes.
@@ -44,7 +48,9 @@ Never register agents or publish maps on production to test a change.
 5. **Test everything.** `make check` fails unless every statement is covered. Write table-driven tests with
    `t.Parallel()` against the fake service in `internal/cli/harness_test.go`, and do not mutate package state outside `cmd/snaphop-maps/main_test.go`. A
    failure path you cannot reach from a test is a sign the code should be simpler.
-6. **Record it.** Add a line under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md) for anything a user or agent can
+6. **Keep project guidance current.** Update affected requirements, design, configuration, operations, verification
+   and test traceability, and keep the decision index current.
+7. **Record it.** Add a line under `## Unreleased` in [CHANGELOG.md](CHANGELOG.md) for anything a user or agent can
    observe, and a decision record in `docs/decisions/` for a material choice.
 
 ## Before you open a pull request
