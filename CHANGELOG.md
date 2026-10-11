@@ -5,6 +5,12 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Added
+
+- Repository review skills for bugs, enhancements, pull requests and documentation, with Claude discovery links.
+  Add CLI-specific requirements, design and code review guidance, architecture, configuration, operations,
+  verification, embedding guidance, test traceability and a decision index, following SnapHop Maps' structure
+  without its design-system update workflow (ADR 0010).
 
 ### Security
 

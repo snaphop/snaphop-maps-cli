@@ -2,7 +2,10 @@
 
 This repository builds the SnapHop Maps CLI, `snaphop-maps`. It is designed for AI agents first, and
 it is written in Go as a single static executable that depends on nothing outside the standard library. Read
-`README.md` for what it does, `CONTRIBUTING.md` for how to change it, and `SECURITY.md` before changing how keys are found, kept or sent. Record material
+`README.md` and `REQUIREMENTS.md` for what it does, `CONTRIBUTING.md` for how to change it,
+`docs/architecture.md` for its boundaries, and `SECURITY.md` before changing how keys are found, kept or sent.
+Read `DESIGN.md` before changing commands or output, `CODE_REVIEW.md` when reviewing changes, and
+`docs/operations.md` before release work. Record material
 decisions in `docs/decisions/` and observable changes in `CHANGELOG.md`.
 
 Core invariants:
@@ -46,3 +49,19 @@ machine by following those steps exactly. Cutting a release is a maintainer's de
 implies, and only what `make dist` built from the tag is ever published. Never commit
 a real API key, a credentials file or production data. Test against a local plane (`snaphop-maps/scripts/dev.sh`), never by
 registering agents on production.
+
+## Repository review skills and documentation
+
+Asked to review a whole queue, follow its repository-local skill ([ADR 0010](docs/decisions/0010-adopt-repository-review-skills-and-documentation.md)):
+
+- [`review-bugs`](.agents/skills/review-bugs/SKILL.md) for all open bug reports.
+- [`review-enhancements`](.agents/skills/review-enhancements/SKILL.md) for all enhancement requests.
+- [`review-prs`](.agents/skills/review-prs/SKILL.md) for open pull requests.
+- [`review-documentations`](.agents/skills/review-documentations/SKILL.md) for the complete documentation set.
+
+Canonical skills live under `.agents/skills/`; `.claude/skills/` links to them. These development workflows are
+separate from the embedded usage skill in `skills/snaphop-maps/`. Review alone does not authorize external tracker
+changes, merging or branch deletion. Follow the scope the user authorized. The CLI has no design-system update skill.
+
+The [documentation index](docs/README.md) links configuration, operations, verification, embedding guidance,
+requirements traceability and the [ADR index](docs/decisions/README.md). Keep them current with related changes.

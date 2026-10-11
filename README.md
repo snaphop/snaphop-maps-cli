@@ -184,6 +184,19 @@ and runs `govulncheck`. No workflow here releases: a maintainer presses SnapHop'
 Unreleased in `CHANGELOG.md` into the next version, tags it and publishes it (ADR 0008). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md)
 and [docs/decisions](docs/decisions).
 
+## Repository guidance
+
+The CLI follows SnapHop Maps' project-documentation and review-skill structure, adapted to this Go client.
+The [requirements](REQUIREMENTS.md), [architecture](docs/architecture.md), [design contract](DESIGN.md) and
+[code review guide](CODE_REVIEW.md) define its boundaries. See the [documentation index](docs/README.md) for
+[configuration](docs/configuration.md), [operations](docs/operations.md), [verification](docs/verification.md),
+[embedding](docs/embedding.md), [traceability](docs/requirements-traceability.md) and [decisions](docs/decisions/README.md).
+
+Repository development skills cover [bugs](.agents/skills/review-bugs/SKILL.md),
+[enhancements](.agents/skills/review-enhancements/SKILL.md), [pull requests](.agents/skills/review-prs/SKILL.md) and
+[documentation](.agents/skills/review-documentations/SKILL.md). They live under `.agents/skills/` with Claude
+links under `.claude/skills/`, and are separate from the usage skill the binary distributes.
+
 ## License
 
 [MIT](LICENSE).
