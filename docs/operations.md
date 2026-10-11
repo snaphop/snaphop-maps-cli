@@ -29,7 +29,8 @@ A publication refusal with exit 5 keeps the draft on stdout. The service decides
 ## Verification and releases
 
 Run `make check`, then `./scripts/ci-local.sh` for handoff. The latter also builds all six platforms, packs the
-usage skill, writes checksums and runs `govulncheck`. Security scanning is a separate Verify job; see
+usage skill, writes checksums and runs `govulncheck` and `make security`. Security scanning also runs in a
+separate Verify job; see
 [verification](verification.md) and [security/README.md](../security/README.md).
 
 A maintainer presses **Maps CLI Release** in snaphop-build-deploy ([ADR 0008](decisions/0008-release-from-snaphop-build-deploy.md)).

@@ -1,4 +1,4 @@
-.PHONY: build test coverage lint fmt check dist clean FORCE
+.PHONY: build test coverage lint fmt check security dist clean FORCE
 
 # Every statement is covered, and it stays that way (AGENTS.md).
 COVERAGE_MIN ?= 100.0
@@ -27,6 +27,10 @@ fmt:
 	gofmt -w .
 
 check: lint build coverage
+
+security:
+	python3 -m unittest discover -s security -p 'test_*.py' -v
+	python3 security/check.py
 
 dist: $(BINARIES) dist/snaphop-maps-skill.zip
 	cd dist && sha256sum snaphop-maps-* > SHA256SUMS

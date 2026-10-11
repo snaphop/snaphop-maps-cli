@@ -14,6 +14,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ### Security
 
+- The full local handoff check now includes security policy regression tests and the pinned Trivy gate through
+  `make security`, matching the security checks already required by Verify.
 - Require Go 1.27.2 so CI and release builds use the standard-library security fixes reported by govulncheck.
 - Verify now checks source dependencies, secrets and configuration with pinned Trivy,
   builds and scans owned containers where applicable, and retains reports and SBOMs
