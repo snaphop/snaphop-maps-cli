@@ -1,6 +1,8 @@
 # Security checks
 
-Run `python3 security/check.py` with Python 3.11+ and Docker with Buildx.
+Run `make security` with Python 3.11+, Docker with Buildx and network access for the policy regression suite
+and full Trivy gate. `./scripts/ci-local.sh` includes this target in the complete local handoff check.
+Run `python3 security/check.py` to run the scanner alone.
 `python3 security/check.py --source-only` runs just the repository checks.
 Run the policy regression suite with
 `python3 -m unittest discover -s security -p 'test_*.py' -v`.
@@ -23,7 +25,8 @@ scan is required as well. This does not replace the project's existing static
 analysis, tests, or language-specific vulnerability checks.
 
 `images.json` enumerates the application-owned Dockerfiles, built from the
-repository root. Each build targets `linux/amd64`, as production does, with a unique verification
+repository root. This CLI currently owns no containers, so its inventory is empty and the gate runs source
+scanning and generates a source SBOM. Each container build targets `linux/amd64`, as production does, with a unique verification
 tag and Buildx SBOM
 attestation. Separate CycloneDX SBOMs and JSON reports are retained in
 `security-reports/` and uploaded for 30 days, including when verification fails.

@@ -180,7 +180,9 @@ a key is never sent in the clear. The CLI follows no redirects.
 
 `make check` runs `gofmt`, `go vet`, the build, and every test with the race detector in random order. It fails
 unless every statement in the module is covered. `./scripts/ci-local.sh` also builds every platform concurrently
-and runs `govulncheck`. No workflow here releases: a maintainer presses SnapHop's release workflow, which turns
+and runs `govulncheck` and `make security` (policy tests and the full Trivy gate). The full check requires
+Python 3.11+, Docker with Buildx and network access; see [security/README.md](security/README.md).
+No workflow here releases: a maintainer presses SnapHop's release workflow, which turns
 Unreleased in `CHANGELOG.md` into the next version, tags it and publishes it (ADR 0008). See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md)
 and [docs/decisions](docs/decisions).
 

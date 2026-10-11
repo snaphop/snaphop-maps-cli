@@ -14,8 +14,9 @@ these are separate from the CLI's embedded usage skill.
 
 ## Set up
 
-You need Go at the version `go.mod` names, and `make`. Nothing else: the module depends on the standard library
-alone.
+You need Go at the version `go.mod` names and `make` for development and Go tests. The module depends on the
+standard library alone. The full handoff check also needs Python 3.11+, Docker with Buildx and network access
+for the pinned security tools and vulnerability databases; see [security/README.md](security/README.md).
 
 ```sh
 git clone https://github.com/snaphop/snaphop-maps-cli.git
@@ -60,8 +61,10 @@ Never register agents or publish maps on production to test a change.
 ```
 
 This runs `gofmt`, `go vet`, the build, and every test under the race detector in random order with the 100%
-coverage floor. It also builds every platform concurrently and runs `govulncheck`, as the Verify workflow does
-on your pull request. Verify runs on Linux, macOS and Windows and must pass before review.
+coverage floor. It also builds every platform concurrently, runs `govulncheck`, and runs `make security` for
+the security policy regression suite and the full pinned Trivy gate, as the Verify workflow does on your pull
+request. Trivy checks dependencies, secrets and configuration, plus owned containers when present, and saves
+reports and SBOMs in `security-reports/`. Verify runs on Linux, macOS and Windows and must pass before review.
 
 Write commit messages in the imperative, describing the result: "Refuse plain http to other hosts", not "Fixed
 http". Explain why in the body when it is not obvious.

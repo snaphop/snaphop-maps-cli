@@ -6,13 +6,14 @@ checkout; report the actual run and failures at handoff.
 | Check | What it proves |
 | --- | --- |
 | `make check` | Formatting, vet, static build, randomized race tests and the 100.0% statement floor on the current platform |
-| `./scripts/ci-local.sh` | The above, all six cross-builds, skill zip and checksums, pinned govulncheck and diff whitespace |
+| `./scripts/ci-local.sh` | The above, all six concurrent cross-builds, skill zip and checksums, pinned govulncheck, security policy tests, full Trivy gate and diff whitespace |
 | Verify macOS and Windows jobs | Native tests and the same coverage floor, including each platform's compiled locking implementation |
 | Verify build matrix | Linux, macOS and Windows binaries for amd64 and arm64 compile |
 | `python3 -m unittest discover -s security -p 'test_*.py' -v` | Security policy regression checks |
 | `python3 security/check.py` | Source vulnerabilities, secrets and configuration, plus owned container scans where applicable |
+| `make security` | Security policy regression checks followed by the full Trivy gate |
 
-The scanner requires Docker and network access and is separate from `ci-local.sh`; read
+The scanner runs as part of `ci-local.sh` and requires Python 3.11+, Docker with Buildx and network access; read
 [security/README.md](../security/README.md) for prerequisites, exceptions, reports and cleanup. Do not weaken a
 failed coverage or security gate. Generated binaries, coverage and scan reports stay out of source control.
 

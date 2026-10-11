@@ -5,4 +5,5 @@ cd "$(dirname "$0")/.."
 make check
 make -j dist
 go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+make security
 git diff HEAD --check

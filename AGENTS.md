@@ -38,7 +38,8 @@ Run `make check` before handoff. It runs `gofmt`, `go vet`, the build, and every
 random order, and it fails unless every statement in the module is covered: the floor is 100.0% and never drops.
 Write tests with `t.Parallel()` against the fake service in `internal/cli/harness_test.go`. Mutate no package
 state except in `cmd/snaphop-maps/main_test.go`. `./scripts/ci-local.sh` is the full handoff check: it also runs
-`make -j dist`, which builds every platform concurrently, and `govulncheck`.
+`make -j dist`, which builds every platform concurrently, `govulncheck`, and `make security` for policy tests
+and the full pinned Trivy gate. The full check needs Python 3.11+, Docker with Buildx and network access.
 
 This repository is public. CI runs only on GitHub-hosted runners with a read-only token and no secrets, because
 pull requests from forks run there. Never add a self-hosted runner, a secret, a write permission or `pull_request_target`. No workflow here releases
