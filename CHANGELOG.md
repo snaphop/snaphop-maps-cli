@@ -14,6 +14,7 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ### Security
 
+- Require Go 1.27.2 so CI and release builds use the standard-library security fixes reported by govulncheck.
 - Verify now checks source dependencies, secrets and configuration with pinned Trivy,
   builds and scans owned containers where applicable, and retains reports and SBOMs
   for 30 days. HIGH/CRITICAL findings and invalid or expired exceptions block verification.
