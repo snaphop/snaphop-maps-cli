@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-12
+
 ### Added
 
 - Repository review skills for bugs, enhancements, pull requests and documentation, with Claude discovery links.
