@@ -440,6 +440,9 @@ func TestRedirectsAreNotFollowed(t *testing.T) {
 		return answer{status: http.StatusTemporaryRedirect, header: http.Header{"Location": {target.server.URL + "/mcp"}}}
 	})
 	h := newHarness(t, s)
+	// Run's own client is the one that must refuse redirects. Its single request
+	// opens a new connection, so another test closing idle connections cannot break it.
+	h.http = nil
 	h.vars["SNAPHOP_MAPS_API_KEY"] = "k"
 	h.run("list-maps").failure(t, exitTransport, "HTTP_307")
 }
