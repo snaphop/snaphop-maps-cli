@@ -285,6 +285,19 @@ func TestASecretIsRedactedBeforeTheBodyIsCut(t *testing.T) {
 	}
 }
 
+// expiring is a context whose deadline passes when its cancel function is called, so a test can
+// let a deadline pass at a chosen moment rather than race a timer.
+type expiring struct{ context.Context }
+
+func (e expiring) Err() error {
+	if e.Context.Err() != nil {
+		return context.DeadlineExceeded
+	}
+	return nil
+}
+
+// TestATimeoutWhileTheAnswerArrivesIsATimeout lets the deadline pass only once the status and
+// headers have arrived and the body has stalled, however long the connection took.
 func TestATimeoutWhileTheAnswerArrivesIsATimeout(t *testing.T) {
 	t.Parallel()
 	release := make(chan struct{})
@@ -296,9 +309,15 @@ func TestATimeoutWhileTheAnswerArrivesIsATimeout(t *testing.T) {
 	}))
 	defer server.Close()
 	defer close(release)
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	client := &Client{Endpoint: server.URL + "/mcp", HTTP: server.Client()}
+	base, expire := context.WithCancel(context.Background())
+	defer expire()
+	ctx := expiring{base}
+	transport := server.Client().Transport
+	client := &Client{Endpoint: server.URL + "/mcp", HTTP: &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		resp, err := transport.RoundTrip(r)
+		expire()
+		return resp, err
+	})}}
 	_, err := client.Call(ctx, "ping", nil, "")
 	if err == nil || err.Code != "TIMEOUT" || err.Status != 200 || err.OutcomeKnown() {
 		t.Fatalf("error = %+v", err)
