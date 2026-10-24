@@ -5,6 +5,12 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Security
+
+- Require Go 1.27.3. Go 1.27.2's standard library accepts certificate paths through distrusted emSign
+  intermediates, whose private keys are public (CVE-2026-111943, HIGH). The CLI makes every service call over TLS,
+  and snaphop-build-deploy refuses Go 1.27.0 to 1.27.2, so CI and release builds now use the fixed release.
+
 ## 0.5.0 — 2026-10-12
 
 ### Added
