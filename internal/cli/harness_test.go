@@ -150,6 +150,12 @@ func newHarness(t *testing.T, s *service) *harness {
 	}
 	h.configDir = func() (string, error) { return filepath.Join(dir, "config"), nil }
 	h.homeDir = func() (string, error) { return filepath.Join(dir, "home"), nil }
+	// Each harness gets its own connections, as Run's default client would in a
+	// real process. Closing an httptest server also closes the idle connections of
+	// http.DefaultTransport, which could break a parallel test's request.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	t.Cleanup(transport.CloseIdleConnections)
+	h.http = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return h
 }
 
