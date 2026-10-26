@@ -75,6 +75,14 @@ var (
 		Name: "publish", Argument: "publish", Kind: kindBool,
 		Description: "Publish the map once created. Defaults to true; --publish=false keeps it a draft.",
 	}
+	limitFlag = flagSpec{
+		Name: "limit", Argument: "limit", Kind: kindInteger,
+		Description: "How many to return, 1 to 200. Defaults to 50.",
+	}
+	cursorFlag = flagSpec{
+		Name: "cursor", Argument: "cursor", Kind: kindString,
+		Description: "The nextCursor the previous page returned. Leave it out for the first page.",
+	}
 	publishUpdateFlag = flagSpec{
 		Name: "publish", Argument: "publish", Kind: kindBool,
 		Description: "Publish the change. Defaults to true; --publish=false only saves the draft.",
@@ -144,9 +152,10 @@ func commands() []*command {
 		{
 			Name: "list-maps", Tool: "list_maps", NeedsKey: true, ReadOnly: true,
 			Summary: "List the workspace's maps",
-			Description: "Lists the workspace's maps: each one's id, name, active release, whether its draft has " +
-				"unpublished changes, and its marker count. Any request keeps the account from expiring.",
-			Flags:   []flagSpec{argsFlag},
+			Description: "Lists the workspace's maps, oldest first: each one's id, name, active release, whether its " +
+				"draft has unpublished changes, and its marker count. Returns a page under maps; while nextCursor is " +
+				"not null, pass it as --cursor for the next page. Any request keeps the account from expiring.",
+			Flags:   []flagSpec{limitFlag, cursorFlag, argsFlag},
 			Example: "snaphop-maps list-maps",
 		},
 		{
@@ -179,8 +188,9 @@ func commands() []*command {
 			Name: "list-releases", Tool: "list_releases", NeedsKey: true, ReadOnly: true, Positional: "id",
 			Summary: "List a map's releases",
 			Description: "Lists every release the map was published as, newest first: each one's number, state, style " +
-				"and when it was published and last made live.",
-			Flags:   []flagSpec{idFlag, argsFlag},
+				"and when it was published and last made live. Returns a page under releases; while nextCursor is not " +
+				"null, pass it as --cursor for the next page.",
+			Flags:   []flagSpec{idFlag, limitFlag, cursorFlag, argsFlag},
 			Example: "snaphop-maps list-releases MAP_ID",
 		},
 		{

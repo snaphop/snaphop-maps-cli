@@ -11,6 +11,12 @@ section with a `### Security` subsection is a security release, and its notes sa
   intermediates, whose private keys are public (CVE-2026-111943, HIGH). The CLI makes every service call over TLS,
   and snaphop-build-deploy refuses Go 1.27.0 to 1.27.2, so CI and release builds now use the fixed release.
 
+### Changed
+
+- `list-maps` and `list-releases` take `--limit` and `--cursor`, since SnapHop Maps pages both lists (its ADR 0045).
+  Each answers one page, 50 entries unless `--limit` asks for up to 200, under `maps` or `releases`, beside the
+  `nextCursor` to pass as `--cursor` for the next. An answer is no longer every map or release at once.
+
 ## 0.5.0 — 2026-10-12
 
 ### Added

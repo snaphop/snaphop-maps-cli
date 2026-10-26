@@ -69,7 +69,9 @@ snaphop-maps publish-map MAP_ID
 snaphop-maps withdraw-map MAP_ID --yes
 ```
 
-- `list-maps` lists each map's `id`, `name`, `activeRelease`, `unpublishedChanges` and marker count.
+- `list-maps` lists each map's `id`, `name`, `activeRelease`, `unpublishedChanges` and marker count, under `maps`,
+  oldest first and 50 at a time. While `nextCursor` is not null there are more: run it again with
+  `--cursor` set to that value, and `--limit` up to 200 for bigger pages.
 - `get-map` returns the whole map, including its `draft`: the definition you can change.
 - `update-map` replaces only the fields you give. `--markers` replaces the **whole** list, so to add one marker,
   read the map with `get-map` and send every marker plus the new one. New markers without a new `--view` get a view
@@ -88,7 +90,7 @@ snaphop-maps rollback-map MAP_ID --release 1
 ```
 
 - `list-releases` lists every release, newest first, with its `number`, state and when it was published and last
-  made live.
+  made live, under `releases`. It pages the same way as `list-maps`.
 - `rollback-map` makes that release live. The page link and every embed show it within about a minute. The draft
   is left as it is, so the next `publish-map` publishes the draft, not the rolled-back release.
 - The rollback is refused with `ACTIVE_RELEASE_CHANGED` if another release went live since you looked.

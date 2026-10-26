@@ -223,13 +223,23 @@
     {
       "name": "list_maps",
       "title": "List maps",
-      "description": "Lists the workspace's maps: each one's id, name, active release, whether its draft has unpublished changes, and its marker count.",
+      "description": "Lists the workspace's maps, oldest first: each one's id, name, active release, whether its draft has unpublished changes, and its marker count. Returns a page of them; while nextCursor is not null, pass it as cursor for the next page.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "apiKey": {
             "type": "string",
             "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "How many to return. Defaults to 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The nextCursor the previous page returned. Leave it out for the first page."
           }
         },
         "required": [],
@@ -453,7 +463,7 @@
     {
       "name": "list_releases",
       "title": "List a map's releases",
-      "description": "Lists every release the map was published as, newest first: each one's number, state, style and when it was published and last made live.",
+      "description": "Lists every release the map was published as, newest first: each one's number, state, style and when it was published and last made live. Returns a page of them; while nextCursor is not null, pass it as cursor for the next page.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -464,6 +474,16 @@
           "id": {
             "type": "string",
             "description": "The map's id, as create_map or list_maps returned it."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "How many to return. Defaults to 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The nextCursor the previous page returned. Leave it out for the first page."
           }
         },
         "required": [
