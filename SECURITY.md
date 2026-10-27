@@ -29,9 +29,9 @@ processes, logs and transcripts may observe its arguments and output.
   `0700`), written whole, synced and renamed into place, so that an interrupted write or a crash leaves the previous
   file intact. Every writer MUST hold the file's lock from reading it to renaming its replacement, and decide what to
   keep against the file as it is under the lock. A reader takes the lock shared, and reads the file as it is only
-  where the lock cannot be opened or taken at all, since no writer can then replace the file either. The lock MUST
-  be opened inside the file's directory, never through a link that leads out of it, and a command MUST NOT wait for
-  it without end.
+  where the lock cannot be opened or taken at all, since no writer can then replace the file either. The file and its
+  lock MUST be opened inside the file's directory, never through a link that leads out of it, and a command MUST NOT
+  wait for the lock without end.
 - No command may silently lose a kept key. Registering over a kept account needs `--overwrite`, and replacing a key
   replaces only the key that was used. A command that would issue a key MUST first prove it can keep it, and MUST
   keep it before printing it (ADR 0005). A hint MUST NOT advise registering again while another key is kept for the

@@ -702,6 +702,8 @@ func TestNoErrorEchoesAKey(t *testing.T) {
 		{"a mistyped flag", nil, "shk_environment_key", "", []string{"--apikey", "shk_environment_key", "list-maps"}, exitUsage, "INVALID_FLAG", false},
 		{"a mistyped flag with an unknown key", nil, "", "", []string{"--apikey=" + unknown, "list-maps"}, exitUsage, "INVALID_FLAG", false},
 		{"an unknown key as the command", nil, "", "", []string{unknown}, exitUsage, "UNKNOWN_COMMAND", true},
+		{"a flag key as the command", nil, "", "", []string{"--api-key", "shk_flag_key", "shk_flag_key"}, exitUsage, "UNKNOWN_COMMAND", true},
+		{"a flag=key as the command", nil, "", "", []string{"--api-key=shk_flag_key", "shk_flag_key"}, exitUsage, "UNKNOWN_COMMAND", true},
 		{"a stray argument", nil, "", "", []string{"list-maps", "shk_flag_key", "--api-key", "shk_flag_key"}, exitUsage, "UNEXPECTED_ARGUMENT", true},
 		{"an unknown key as a stray argument", nil, "", "", []string{"list-maps", unknown}, exitUsage, "UNEXPECTED_ARGUMENT", true},
 		{"a header echoed back", echo, "", "shk_kept_key", []string{"list-maps"}, exitTransport, "HTTP_502", true},

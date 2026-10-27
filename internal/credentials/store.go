@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/url"
 	"os"
@@ -28,6 +29,9 @@ const DefaultWait = 10 * time.Second
 
 // lockPoll is how often a command waiting for the lock tries it again.
 const lockPoll = 20 * time.Millisecond
+
+// MaxFileBytes bounds how large a credentials file is read.
+const MaxFileBytes = 8 << 20
 
 // MaxReplacedKeys is how many replaced keys an account remembers, newest first. A key replaced longer
 // ago than that is forgotten: still given elsewhere, it is sent, and refused.
@@ -114,7 +118,7 @@ func DefaultPath(configDir func() (string, error)) (string, error) {
 // that cannot lock, no writer can replace the file either, and it is read as it is.
 func (s Store) Get(service string) (Account, bool, error) {
 	root, unlock, err := s.acquireToRead()
-	if err != nil {
+	if err != nil || root == nil {
 		return Account{}, false, err
 	}
 	defer unlock()
@@ -201,8 +205,11 @@ func (s Store) modify(change func(*file) error) error {
 // as the file is. Only a lock another command holds too long stops it.
 func (s Store) acquireToRead() (*os.Root, func(), error) {
 	root, err := os.OpenRoot(filepath.Dir(s.Path))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, nil
+	}
 	if err != nil {
-		return nil, func() {}, nil
+		return nil, nil, fmt.Errorf("cannot read %s: %w", s.Path, err)
 	}
 	unlock, err := s.acquire(root, false)
 	if errors.Is(err, errUnlockable) {
@@ -291,14 +298,17 @@ func (s Store) wait(file *os.File, exclusive bool, wait time.Duration, deadline 
 }
 
 func (s Store) load(root *os.Root) (file, error) {
-	readFile := os.ReadFile
-	name := s.Path
-	if root != nil {
-		readFile, name = root.ReadFile, filepath.Base(s.Path)
-	}
-	data, err := readFile(name)
+	opened, err := root.Open(filepath.Base(s.Path))
 	if errors.Is(err, fs.ErrNotExist) {
 		return file{fields: map[string]json.RawMessage{}, accounts: map[string]json.RawMessage{}}, nil
+	}
+	var data []byte
+	if err == nil {
+		data, err = io.ReadAll(io.LimitReader(opened, MaxFileBytes+1))
+		_ = opened.Close()
+	}
+	if err == nil && len(data) > MaxFileBytes {
+		err = errors.New("larger than 8 MiB")
 	}
 	if err != nil {
 		return file{}, fmt.Errorf("cannot read %s: %w", s.Path, err)

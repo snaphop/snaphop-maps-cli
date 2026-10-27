@@ -87,6 +87,7 @@ func TestLoadRefusesWhatItCannotRead(t *testing.T) {
 		want string
 	}{
 		"directory":            {directory, "cannot read"},
+		"too large":            {write("huge.json", strings.Repeat(" ", MaxFileBytes+1)), "larger than 8 MiB"},
 		"not json":             {write("garbage.json", "not json"), "is not a credentials file"},
 		"null":                 {write("null.json", "null"), "is not a credentials file"},
 		"a version in words":   {write("words.json", `{"version": "one"}`), "is not a credentials file"},

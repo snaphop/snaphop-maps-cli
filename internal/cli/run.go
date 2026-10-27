@@ -734,9 +734,17 @@ func (inv *invocation) warn(code, message, hint string) {
 // secrets are the keys this run knows: the key it sends or was issued, the kept key, and those given
 // by flag or environment.
 func (inv *invocation) secrets() []string {
-	candidates := []string{inv.sent, inv.lookupString("api-key"), inv.env.Getenv("SNAPHOP_MAPS_API_KEY")}
+	candidates := []string{inv.sent, inv.env.Getenv("SNAPHOP_MAPS_API_KEY")}
 	if inv.found != nil && inv.found.kept != nil {
 		candidates = append(candidates, inv.found.kept.APIKey)
+	}
+	for i, arg := range inv.env.Args {
+		name, value, hasValue := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+		if name == "api-key" && hasValue {
+			candidates = append(candidates, value)
+		} else if name == "api-key" && i+1 < len(inv.env.Args) {
+			candidates = append(candidates, inv.env.Args[i+1])
+		}
 	}
 	var keys []string
 	for _, key := range candidates {
@@ -745,13 +753,6 @@ func (inv *invocation) secrets() []string {
 		}
 	}
 	return keys
-}
-
-func (inv *invocation) lookupString(name string) string {
-	if value := inv.strings[name]; value != nil {
-		return *value
-	}
-	return ""
 }
 
 // redact takes every key out of a document for standard error: the keys this run knows, and anything
