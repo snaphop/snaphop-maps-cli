@@ -31,6 +31,7 @@ class SecurityGateTest(unittest.TestCase):
         patch.object(check, "ROOT", self.root).start()
         patch.object(check, "REPORTS", self.reports).start()
         patch.dict(check.os.environ, {"GITHUB_RUN_ID": "local", "GITHUB_RUN_ATTEMPT": "1"}).start()
+        patch.object(check.platform, "machine", return_value="x86_64").start()
 
     def entry(self):
         return dict(id="CVE-2099-1234", expired_at="2099-12-31", owner="Security team",
@@ -104,6 +105,24 @@ class SecurityGateTest(unittest.TestCase):
         self.assertEqual(cleanup[:4], ["docker", "image", "rm", "--force"])
         self.assertEqual(len(cleanup[4:]), 2)
         self.assertTrue(all(":security-" in image for image in cleanup[4:]))
+
+    def test_local_arm64_leaves_image_builds_and_scans_to_ci(self):
+        skipped = "Skipped the linux/amd64 image builds and scans on arm64; CI runs them"
+        for machine, actions, skips in [("aarch64", None, True), ("arm64", None, True), ("ARM64", "false", True),
+                                        ("aarch64", "true", False), ("arm64", "true", False), ("x86_64", None, False)]:
+            with self.subTest(machine=machine, actions=actions):
+                with patch.dict(check.os.environ), patch.object(check.platform, "machine", return_value=machine), patch.object(sys, "argv", ["check.py"]), patch.object(check, "scan", return_value=True) as scan, patch.object(check.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run, patch("builtins.print") as printed:
+                    check.os.environ.pop("GITHUB_ACTIONS", None)
+                    if actions:
+                        check.os.environ["GITHUB_ACTIONS"] = actions
+                    self.assertEqual(check.main(), 0)
+                builds = [c.args[0] for c in run.call_args_list if c.args[0][:3] == ["docker", "buildx", "build"]]
+                self.assertEqual(len(builds), 0 if skips else 2)
+                self.assertEqual(scan.call_count, 2 if skips else 6)
+                self.assertEqual(any(c.args == (skipped,) for c in printed.call_args_list), skips)
+        with patch.object(check.platform, "machine", return_value="aarch64"), patch.dict(check.os.environ, {"GITHUB_ACTIONS": ""}), patch.object(sys, "argv", ["check.py"]), patch.object(check, "scan", side_effect=[False, True]), patch.object(check.subprocess, "run") as run, patch("builtins.print"):
+            self.assertEqual(check.main(), 1)
+            run.assert_not_called()
 
     def test_failure_does_not_skip_remaining_scans_or_sboms(self):
         with patch.object(sys, "argv", ["check.py", "--source-only"]), patch.object(check, "scan", side_effect=[False, True]) as scan:

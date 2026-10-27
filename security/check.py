@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 from pathlib import Path
+import platform
 import re
 import signal
 import subprocess
@@ -70,6 +71,11 @@ def redact(value):
     return value
 
 
+def arm64_outside_ci():
+    """CI and production run linux/amd64; a local arm64 run leaves the image builds and scans to CI rather than emulate them."""
+    return platform.machine().lower() in {"aarch64", "arm64"} and os.environ.get("GITHUB_ACTIONS") != "true"
+
+
 def scan(target, name, image=False, sbom=False):
     command = ["docker", "run", "--rm", "--volume", f"{ROOT}:/project:ro",
                "--volume", f"{ROOT.name}-trivy-cache:/root/.cache/trivy"]
@@ -129,7 +135,9 @@ def main():
     try:
         for sbom in (False, True):
             failed = not scan("/project", "source", sbom=sbom) or failed
-        if not args.source_only:
+        if not args.source_only and arm64_outside_ci():
+            print("Skipped the linux/amd64 image builds and scans on arm64; CI runs them")
+        elif not args.source_only:
             for name, dockerfile in images.items():
                 if not re.fullmatch(r"[a-z0-9-]+", name) or not (ROOT / dockerfile).resolve().is_relative_to(ROOT):
                     raise ValueError("invalid container manifest")
