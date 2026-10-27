@@ -214,8 +214,8 @@ func TestFieldsOfANewerBuildSurvive(t *testing.T) {
 	}
 }
 
-// TestALockLinkIsNotFollowed is a lock file that is a link to a file outside the credentials file's
-// directory: taking the lock must not create or lock that file.
+// TestALockLinkIsNotFollowed is a lock file that is a link, inside or outside the credentials file's
+// directory, or a credentials file that links outside it: neither is followed.
 func TestALockLinkIsNotFollowed(t *testing.T) {
 	t.Parallel()
 	dir, outside := t.TempDir(), t.TempDir()
@@ -223,22 +223,27 @@ func TestALockLinkIsNotFollowed(t *testing.T) {
 	if err := store.Put(service, Account{APIKey: "shk_kept"}); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(outside, "victim")
-	if err := os.Remove(store.Path + ".lock"); err != nil {
-		t.Fatal(err)
+	for _, target := range []string{filepath.Join(outside, "victim"), filepath.Join(dir, "inside")} {
+		_ = os.Remove(store.Path + ".lock")
+		if err := os.Symlink(target, store.Path+".lock"); err != nil {
+			t.Skipf("cannot make a link here: %v", err)
+		}
+		if err := store.Put(service, Account{APIKey: "shk_new"}); err == nil || !strings.Contains(err.Error(), "cannot lock") {
+			t.Fatalf("Put error = %v", err)
+		}
+		if _, err := os.Lstat(target); err == nil {
+			t.Fatal("the link's target was created")
+		}
+		// A reader that cannot open the lock reads the file as it is: no writer can replace it either.
+		if got, ok, err := store.Get(service); !ok || err != nil || got.APIKey != "shk_kept" {
+			t.Fatalf("Get = %+v, %v, %v", got, ok, err)
+		}
 	}
-	if err := os.Symlink(target, store.Path+".lock"); err != nil {
-		t.Skipf("cannot make a link here: %v", err)
-	}
-	if err := store.Put(service, Account{APIKey: "shk_new"}); err == nil || !strings.Contains(err.Error(), "cannot lock") {
-		t.Fatalf("Put error = %v", err)
-	}
-	if _, err := os.Lstat(target); err == nil {
-		t.Fatal("the link's target was created")
-	}
-	// A reader that cannot open the lock reads the file as it is: no writer can replace it either.
-	if got, ok, err := store.Get(service); !ok || err != nil || got.APIKey != "shk_kept" {
-		t.Fatalf("Get = %+v, %v, %v", got, ok, err)
+	escaped := Store{Path: filepath.Join(dir, "escaped.json")}
+	if err := os.Symlink(filepath.Join(outside, "victim"), escaped.Path); err == nil {
+		if _, _, err := escaped.Get(service); err == nil || !strings.Contains(err.Error(), "cannot read") {
+			t.Fatalf("Get through an escaping link = %v", err)
+		}
 	}
 }
 

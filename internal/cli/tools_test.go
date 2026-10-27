@@ -265,6 +265,7 @@ func TestLocalRefusalsSendNothing(t *testing.T) {
 		{"revoke without an id", []string{"revoke-invitation"}, exitUsage, "MISSING_ARGUMENT", nil},
 		{"not a url", []string{"list-maps", "--url", "http://[::1"}, exitUsage, "INVALID_URL", nil},
 		{"no host", []string{"list-maps", "--url", "https://"}, exitUsage, "INVALID_URL", nil},
+		{"port with no host", []string{"list-maps", "--url", "https://:443"}, exitUsage, "INVALID_URL", nil},
 		{"not http", []string{"list-maps", "--url", "ftp://maps.snaphop.ai"}, exitUsage, "INVALID_URL", nil},
 		{"credentials in url", []string{"list-maps", "--url", "https://user:pw@maps.snaphop.ai"}, exitUsage, "INVALID_URL", nil},
 		{"query in url", []string{"list-maps", "--url", "https://maps.snaphop.ai/?x=1"}, exitUsage, "INVALID_URL", nil},
@@ -705,6 +706,11 @@ func TestNoErrorEchoesAKey(t *testing.T) {
 		{"an unknown key as a stray argument", nil, "", "", []string{"list-maps", unknown}, exitUsage, "UNEXPECTED_ARGUMENT", true},
 		{"a header echoed back", echo, "", "shk_kept_key", []string{"list-maps"}, exitTransport, "HTTP_502", true},
 		{"an argument echoed back", echo, "", "", []string{"list-maps", "--args", `{"apiKey": "shk_argument_key"}`}, exitTransport, "HTTP_502", true},
+		{"an argument key in a conflicting argument error", nil, "", "", []string{"get-map", "shk_argument_key", "--id", "other", "--args", `{"apiKey": "shk_argument_key"}`}, exitUsage, "CONFLICTING_ARGUMENT", true},
+		{"a kept key echoed when another key is sent", func(request) answer { return answer{status: 502, body: "shk_kept_key"} }, "shk_environment_key", "shk_kept_key", []string{"list-maps"}, exitTransport, "HTTP_502", true},
+		{"a JSON-escaped key where the body is cut", func(request) answer {
+			return answer{status: 502, body: strings.Repeat("x", 180) + ` shk_quote\"key_end`}
+		}, "", `shk_quote"key_end`, []string{"list-maps"}, exitTransport, "HTTP_502", true},
 		{"a body after a warning", func(request) answer { return answer{status: 404, body: "shk_kept_key"} }, "", "shk_kept_key", []string{"list-maps"}, exitTransport, "HTTP_404", true},
 		{"a key where the body is cut", func(r request) answer {
 			return answer{status: 502, body: strings.Repeat("x", 180) + " " + strings.TrimPrefix(r.Auth, "Bearer ")}

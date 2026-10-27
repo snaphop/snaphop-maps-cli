@@ -17,5 +17,3 @@ scan:
     - "**/dist"
     - "**/test-results"
     - "**/security-reports"
-  skip-files:
-    - "**/.env"

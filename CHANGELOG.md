@@ -5,6 +5,18 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Security
+
+- `skill install --project` now refuses any link along the skill directory's path inside the project, not only a link
+  at the final directory or one that escapes the project.
+- Reading the credentials file now stays within its directory root, and `credentials.json.lock` is refused when it is a
+  link to a file inside the same directory as well as outside it.
+- Standard error now redacts an `apiKey` given in `--args` before argument validation completes, a kept key when
+  another key was sent, a newly issued key on post-response failure, and JSON-escaped keys before response excerpts are
+  shortened.
+- Service URL validation now refuses an address with a port and an empty hostname, such as `https://:443`.
+- Trivy source scanning no longer skips `.env` files if one is present in the checkout.
+
 ## 0.6.0 — 2026-10-27
 
 ### Security

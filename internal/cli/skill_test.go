@@ -428,6 +428,9 @@ func TestSkillInstallNeverWritesThroughALink(t *testing.T) {
 		{"the skill's directory is a link", func(t *testing.T, project, victim string) {
 			link(t, victim, filepath.Join(project, ".claude", "skills", "snaphop-maps"))
 		}, "is a link or a file, not the skill's own directory"},
+		{"a directory above it is a link inside the project", func(t *testing.T, project, _ string) {
+			link(t, "elsewhere", filepath.Join(project, ".claude"))
+		}, "is a link or a file, not the skill's own directory"},
 		{"a directory above it leads out of the project", func(t *testing.T, project, victim string) {
 			link(t, victim, filepath.Join(project, ".claude"))
 		}, "escapes"},

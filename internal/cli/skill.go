@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -132,10 +133,12 @@ func writeSkill(base, directory string, files []string) (bool, error) {
 		return false, err
 	}
 	defer root.Close()
-	info, err := root.Lstat(directory)
+	_, err = root.Lstat(directory)
 	replaced := err == nil
-	if replaced && !info.IsDir() {
-		return false, fmt.Errorf("%s is a link or a file, not the skill's own directory", filepath.Join(base, directory))
+	for part := directory; part != "." && (replaced || errors.Is(err, fs.ErrNotExist)); part = filepath.Dir(part) {
+		if info, err := root.Lstat(part); err == nil && !info.IsDir() {
+			return false, fmt.Errorf("%s is a link or a file, not the skill's own directory", filepath.Join(base, part))
+		}
 	}
 	for _, name := range files {
 		file := filepath.Join(directory, filepath.FromSlash(name))

@@ -301,7 +301,7 @@ func serviceURL(raw, source string) (string, error) {
 		return "", fmt.Errorf("%s %q is not a URL", source, raw)
 	}
 	scheme := strings.ToLower(u.Scheme)
-	if u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (scheme != "https" && scheme != "http") {
+	if u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (scheme != "https" && scheme != "http") {
 		return "", fmt.Errorf("%s %q is not an http(s) address of a service, without credentials, query or fragment", source, raw)
 	}
 	if scheme == "http" && !loopback(u.Hostname()) {
@@ -356,6 +356,7 @@ func (inv *invocation) arguments() (map[string]any, int, bool) {
 			return nil, code, false
 		}
 		arguments = object
+		inv.sent, _ = object["apiKey"].(string)
 	}
 	for _, spec := range inv.cmd.Flags {
 		if spec.Argument == "" || !inv.set[spec.Name] {
@@ -619,6 +620,7 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 	// opened, or its key replaced, without the key reaching here.
 	var issued credentials.Account
 	_ = json.Unmarshal(result.Structured, &issued)
+	inv.sent = inv.first(issued.APIKey, inv.sent)
 	keyless := saves && issued.APIKey == ""
 	notKept := ""
 	if saves && !keyless {
@@ -729,10 +731,15 @@ func (inv *invocation) warn(code, message, hint string) {
 	inv.emit(document)
 }
 
-// secrets are the keys this run knows: the key it sends, and those given by flag or environment.
+// secrets are the keys this run knows: the key it sends or was issued, the kept key, and those given
+// by flag or environment.
 func (inv *invocation) secrets() []string {
+	candidates := []string{inv.sent, inv.lookupString("api-key"), inv.env.Getenv("SNAPHOP_MAPS_API_KEY")}
+	if inv.found != nil && inv.found.kept != nil {
+		candidates = append(candidates, inv.found.kept.APIKey)
+	}
 	var keys []string
-	for _, key := range []string{inv.sent, inv.lookupString("api-key"), inv.env.Getenv("SNAPHOP_MAPS_API_KEY")} {
+	for _, key := range candidates {
 		if len(key) >= minRedacted {
 			keys = append(keys, key)
 		}
@@ -763,6 +770,8 @@ func (inv *invocation) redact(document []byte) []byte {
 func (inv *invocation) redactText(text string) string {
 	for _, key := range inv.secrets() {
 		text = strings.ReplaceAll(text, key, "[REDACTED]")
+		quoted, _ := json.Marshal(key)
+		text = strings.ReplaceAll(text, string(quoted[1:len(quoted)-1]), "[REDACTED]")
 	}
 	return keyShape.ReplaceAllString(text, "[REDACTED]")
 }

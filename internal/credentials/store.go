@@ -113,12 +113,12 @@ func DefaultPath(configDir func() (string, error)) (string, error) {
 // opened, such as in a directory it may not write to, or cannot be taken, such as on a file system
 // that cannot lock, no writer can replace the file either, and it is read as it is.
 func (s Store) Get(service string) (Account, bool, error) {
-	unlock, err := s.acquireToRead()
+	root, unlock, err := s.acquireToRead()
 	if err != nil {
 		return Account{}, false, err
 	}
 	defer unlock()
-	f, err := s.load()
+	f, err := s.load(root)
 	if err != nil {
 		return Account{}, false, err
 	}
@@ -184,7 +184,7 @@ func (s Store) modify(change func(*file) error) error {
 		return err
 	}
 	defer unlock()
-	f, err := s.load()
+	f, err := s.load(root)
 	if err != nil {
 		return err
 	}
@@ -199,10 +199,10 @@ func (s Store) modify(change func(*file) error) error {
 
 // acquireToRead takes the lock, shared, for a reader where it can be had, and otherwise lets it read
 // as the file is. Only a lock another command holds too long stops it.
-func (s Store) acquireToRead() (func(), error) {
+func (s Store) acquireToRead() (*os.Root, func(), error) {
 	root, err := os.OpenRoot(filepath.Dir(s.Path))
 	if err != nil {
-		return func() {}, nil
+		return nil, func() {}, nil
 	}
 	unlock, err := s.acquire(root, false)
 	if errors.Is(err, errUnlockable) {
@@ -210,9 +210,9 @@ func (s Store) acquireToRead() (func(), error) {
 	}
 	if err != nil {
 		_ = root.Close()
-		return nil, err
+		return nil, nil, err
 	}
-	return func() {
+	return root, func() {
 		unlock()
 		_ = root.Close()
 	}, nil
@@ -263,6 +263,9 @@ func (s Store) open(root *os.Root, deadline time.Time) (*os.File, error) {
 }
 
 func openLockFile(root *os.Root, name string) (*os.File, error) {
+	if info, err := root.Lstat(name); err == nil && !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", name)
+	}
 	return root.OpenFile(name, os.O_RDWR|os.O_CREATE, 0o600)
 }
 
@@ -287,8 +290,13 @@ func (s Store) wait(file *os.File, exclusive bool, wait time.Duration, deadline 
 	}
 }
 
-func (s Store) load() (file, error) {
-	data, err := os.ReadFile(s.Path)
+func (s Store) load(root *os.Root) (file, error) {
+	readFile := os.ReadFile
+	name := s.Path
+	if root != nil {
+		readFile, name = root.ReadFile, filepath.Base(s.Path)
+	}
+	data, err := readFile(name)
 	if errors.Is(err, fs.ErrNotExist) {
 		return file{fields: map[string]json.RawMessage{}, accounts: map[string]json.RawMessage{}}, nil
 	}
