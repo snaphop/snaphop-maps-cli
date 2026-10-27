@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.6.0 — 2026-10-27
+
 ### Security
 
 - Require Go 1.27.3. Go 1.27.2's standard library accepts certificate paths through distrusted emSign
