@@ -71,9 +71,15 @@ def redact(value):
     return value
 
 
-def arm64_outside_ci():
-    """CI and production run linux/amd64; a local arm64 run leaves the image builds and scans to CI rather than emulate them."""
-    return platform.machine().lower() in {"aarch64", "arm64"} and os.environ.get("GITHUB_ACTIONS") != "true"
+def host_platform():
+    """Build for this machine's own platform: linux/amd64 in CI and production, linux/arm64 on arm64. Nothing is emulated."""
+    machine = platform.machine().lower()
+    target = {"x86_64": "linux/amd64", "amd64": "linux/amd64", "aarch64": "linux/arm64", "arm64": "linux/arm64"}.get(machine)
+    if target is None:
+        raise SystemExit(f"Unsupported machine {machine!r}; images build natively on amd64 or arm64 alone")
+    if os.environ.get("GITHUB_ACTIONS") == "true" and target != "linux/amd64":
+        raise SystemExit(f"CI runs on linux/amd64 alone; this runner is {machine}")
+    return target
 
 
 def scan(target, name, image=False, sbom=False):
@@ -128,6 +134,7 @@ def main():
         return 0
     validate_exceptions(ROOT / "security/exceptions.yaml")
     images = json.loads((ROOT / "security/images.json").read_text())
+    target = None if args.source_only else host_platform()
     REPORTS.mkdir(exist_ok=True)
     failed = False
     owned = []
@@ -135,16 +142,14 @@ def main():
     try:
         for sbom in (False, True):
             failed = not scan("/project", "source", sbom=sbom) or failed
-        if not args.source_only and arm64_outside_ci():
-            print("Skipped the linux/amd64 image builds and scans on arm64; CI runs them")
-        elif not args.source_only:
+        if not args.source_only:
             for name, dockerfile in images.items():
                 if not re.fullmatch(r"[a-z0-9-]+", name) or not (ROOT / dockerfile).resolve().is_relative_to(ROOT):
                     raise ValueError("invalid container manifest")
                 image = f"{ROOT.name}-{name}:{run_tag}"
                 owned.append(image)
                 (REPORTS / "images.json").write_text(json.dumps(owned) + "\n")
-                built = subprocess.run(["docker", "buildx", "build", "--platform", "linux/amd64", "--load", "--sbom=true", "--metadata-file",
+                built = subprocess.run(["docker", "buildx", "build", "--platform", target, "--load", "--sbom=true", "--metadata-file",
                                         str(REPORTS / f"{name}-build.json"), "--file", dockerfile,
                                         "--tag", image, "."], cwd=ROOT, check=False).returncode == 0
                 if not built:

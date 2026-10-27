@@ -7,10 +7,11 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ### Changed
 
-- On an arm64 machine outside GitHub Actions, `make security` and `./scripts/ci-local.sh` no longer build or scan
-  `linux/amd64` images under emulation. The gate prints `Skipped the linux/amd64 image builds and scans on arm64; CI runs them`
-  and leaves those steps to CI, where nothing is skipped; the source scans and source SBOM still run. The image
-  inventory is empty, so no image was built before either. The CLI itself is unchanged.
+- `make security` and `./scripts/ci-local.sh` build each image in `security/images.json` for the machine's own
+  platform: `linux/amd64` in CI and production, `linux/arm64` on an arm64 machine, where it was always `linux/amd64` and
+  so emulated on arm64. Nothing is emulated or skipped, and the same scans run. Under GitHub Actions a runner that is
+  not amd64 is refused, as is an unknown machine. The image inventory is empty, so no image is built yet. The CLI
+  itself is unchanged.
 
 ### Security
 
