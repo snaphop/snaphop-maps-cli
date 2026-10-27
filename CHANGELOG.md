@@ -5,6 +5,13 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Changed
+
+- On an arm64 machine outside GitHub Actions, `make security` and `./scripts/ci-local.sh` no longer build or scan
+  `linux/amd64` images under emulation. The gate prints `Skipped the linux/amd64 image builds and scans on arm64; CI runs them`
+  and leaves those steps to CI, where nothing is skipped; the source scans and source SBOM still run. The image
+  inventory is empty, so no image was built before either. The CLI itself is unchanged.
+
 ### Security
 
 - `skill install --project` now refuses any link along the skill directory's path inside the project, not only a link

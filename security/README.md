@@ -28,7 +28,9 @@ analysis, tests, or language-specific vulnerability checks.
 repository root. This CLI currently owns no containers, so its inventory is empty and the gate runs source
 scanning and generates a source SBOM. Each container build targets `linux/amd64`, as production does, with a unique verification
 tag and Buildx SBOM
-attestation. Separate CycloneDX SBOMs and JSON reports are retained in
+attestation. On an arm64 machine outside GitHub Actions the gate skips the image builds and scans rather than emulate
+`linux/amd64`, says so in one line and leaves them to CI; the source scans still run.
+Separate CycloneDX SBOMs and JSON reports are retained in
 `security-reports/` and uploaded for 30 days, including when verification fails.
 Only this run's image tags are removed; the cache volume is retained. No image
 is published and no deployment command is run.
