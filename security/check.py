@@ -10,6 +10,7 @@ import platform
 import re
 import signal
 import subprocess
+import tempfile
 import uuid
 
 
@@ -62,6 +63,14 @@ def validate_exceptions(file, today=None):
     return document
 
 
+def trivy_policy(document):
+    """Trivy reads expired_at only as an RFC 3339 time and refuses the plain YYYY-MM-DD date this policy keeps,
+    which fails every scan. So its copy ends each entry at the start of that day in UTC, the moment
+    validate_exceptions starts refusing it. Nothing else changes."""
+    return json.dumps({section: [dict(entry, expired_at=f"{entry['expired_at']}T00:00:00Z") for entry in entries]
+                       for section, entries in document.items()}, indent=2) + "\n"
+
+
 def redact(value):
     """Keep finding metadata without matched secrets or configuration source."""
     if isinstance(value, list):
@@ -83,6 +92,20 @@ def host_platform():
 
 
 def scan(target, name, image=False, sbom=False):
+    # Every scan validates the policy itself and hands Trivy a copy in a directory of its own, which no other run
+    # can have written. It sits in the ignored security-reports, which Trivy reads through /project and its
+    # source scan skips, and is removed when the scan ends.
+    policy = trivy_policy(validate_exceptions(ROOT / "security/exceptions.yaml"))
+    REPORTS.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="trivy-policy-", dir=REPORTS) as directory:
+        ignorefile = Path(directory) / "trivy-ignore.yaml"
+        ignorefile.write_text(policy)
+        Path(directory).chmod(0o755)
+        ignorefile.chmod(0o644)
+        return _scan(target, name, image, sbom, "/project/" + ignorefile.relative_to(ROOT).as_posix())
+
+
+def _scan(target, name, image, sbom, ignorefile):
     command = ["docker", "run", "--rm", "--volume", f"{ROOT}:/project:ro",
                "--volume", f"{ROOT.name}-trivy-cache:/root/.cache/trivy"]
     maven_cache = Path.home() / ".m2/repository"
@@ -92,7 +115,7 @@ def scan(target, name, image=False, sbom=False):
     if image:
         command += ["--volume", "/var/run/docker.sock:/var/run/docker.sock"]
     command += [TRIVY, "image" if image else "fs", "--quiet", "--no-progress",
-                "--config", "/project/security/trivy.yaml", "--ignorefile", "/project/security/exceptions.yaml",
+                "--config", "/project/security/trivy.yaml", "--ignorefile", ignorefile,
                 "--timeout", "15m"]
     if not image:
         command += ["--include-dev-deps"]

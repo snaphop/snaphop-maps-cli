@@ -47,7 +47,12 @@ Every entry requires an exact `id`, `owner`, `rationale`, `mitigation`, `stateme
 and a future `expired_at` date in `YYYY-MM-DD` form. Optional `paths` or `purls`
 contain exact values, never wildcards; secret and configuration exceptions must
 name exact paths. Duplicate keys, unknown fields and expired entries fail before
-scanning. Suppressed vulnerability findings remain visible in the JSON report.
+scanning. Every scan validates the file again and gives Trivy its own copy, in a
+new directory under `security-reports/` that is removed afterwards, with each
+`expired_at` written as midnight UTC that day, because Trivy reads only RFC 3339
+times and refuses a plain date. An entry stops applying on the day the validator
+starts refusing it. Suppressed vulnerability findings remain visible in the JSON
+report.
 Review any exemption under this project's SECURITY.md; never blanket-ignore
 unfixed vulnerabilities or bypass a failed gate.
 
