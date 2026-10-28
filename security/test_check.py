@@ -43,6 +43,37 @@ class SecurityGateTest(unittest.TestCase):
         self.policy.write_text(json.dumps(self.empty))
         check.validate_exceptions(self.policy)
 
+    def test_every_scan_hands_trivy_its_own_validated_policy_with_an_rfc_3339_expiry(self):
+        # Trivy 0.74 refuses a plain YYYY-MM-DD expired_at in an ignorefile, so the first reviewed exception would
+        # fail every scan. scan() itself validates the policy and writes Trivy's copy, whoever calls it.
+        self.empty["vulnerabilities"].append(dict(self.entry(), purls=["pkg:golang/example.com/m@v1.0.0"], paths=["go.mod"]))
+        self.policy.write_text(json.dumps(self.empty))
+        stale = self.reports / "trivy-ignore.yaml"
+        stale.write_text('{"vulnerabilities":[{"id":"CVE-2099-9999"}],"misconfigurations":[],"secrets":[]}')
+        seen = []
+
+        def run(command, **kwargs):
+            ignorefile = command[command.index("--ignorefile") + 1]
+            self.assertTrue(ignorefile.startswith("/project/security-reports/trivy-policy-"))
+            local = self.root / ignorefile.removeprefix("/project/")
+            seen.append((local, json.loads(local.read_text())))
+            return subprocess.CompletedProcess(command, 0, b'{"SchemaVersion":2,"Results":[]}', b"")
+        with patch.object(check.subprocess, "run", side_effect=run):
+            self.assertTrue(check.scan("/project", "source"))
+            self.assertTrue(check.scan("image@sha256:" + "0" * 64, "app", image=True))
+        expected = dict(self.empty, vulnerabilities=[dict(self.empty["vulnerabilities"][0], expired_at="2099-12-31T00:00:00Z")])
+        self.assertEqual([policy for _, policy in seen], [expected, expected])
+        self.assertNotEqual(seen[0][0], seen[1][0])
+        self.assertTrue(all(not path.parent.exists() for path, _ in seen))
+        self.assertEqual(json.loads(self.policy.read_text()), self.empty)
+        # A policy the validator refuses never reaches Trivy, whoever calls scan().
+        self.empty["vulnerabilities"][0]["expired_at"] = "2000-01-01"
+        self.policy.write_text(json.dumps(self.empty))
+        with patch.object(check.subprocess, "run") as run:
+            with self.assertRaises(ValueError):
+                check.scan("/project", "source")
+        run.assert_not_called()
+
     def test_expired_malformed_broad_and_unowned_exceptions_fail(self):
         invalid = [dict(owner=""), dict(expired_at="2000-01-01"), dict(expired_at="2099-02-30"),
                    dict(expired_at="2099-1-1"), dict(id="*"), dict(paths=["**"]), dict(paths=["[ab].txt"]),

@@ -13,6 +13,14 @@ section with a `### Security` subsection is a security release, and its notes sa
   not amd64 is refused, as is an unknown machine. The image inventory is empty, so no image is built yet. The CLI
   itself is unchanged.
 
+### Fixed
+
+- The security gate now hands Trivy each exception's `expired_at` as an RFC 3339 time, midnight UTC that day. The
+  gate requires a plain `YYYY-MM-DD` date, which Trivy 0.74 refuses, so the first exception added to
+  `security/exceptions.yaml` would have made every scan fail with a scanner error. Each scan validates the policy and
+  gives Trivy its own converted copy in a temporary directory under `security-reports/`, removed afterwards. The
+  policy's format and validation rules are unchanged, and there are still no exceptions. The CLI itself is unchanged.
+
 ### Security
 
 - `skill install --project` now refuses any link along the skill directory's path inside the project, not only a link
