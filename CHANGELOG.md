@@ -7,6 +7,10 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ### Changed
 
+- `list-activity` takes `--limit` and `--cursor`, since SnapHop Maps pages the activity (its ADR 0047). It answers
+  one page, 50 events unless `--limit` asks for up to 200, under `events`, beside the `nextCursor` to pass as
+  `--cursor` for the next. An answer is no longer only the 50 most recent events.
+
 - `make security` and `./scripts/ci-local.sh` build each image in `security/images.json` for the machine's own
   platform: `linux/amd64` in CI and production, `linux/arm64` on an arm64 machine, where it was always `linux/amd64` and
   so emulated on arm64. Nothing is emulated or skipped, and the same scans run. Under GitHub Actions a runner that is

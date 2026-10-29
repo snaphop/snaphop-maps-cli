@@ -20,7 +20,7 @@ CLI offers exactly what the MCP server offers:
 | `list-releases`  | `list_releases`  | List a map's releases, newest first                                 |
 | `rollback-map`   | `rollback_map`   | Make an earlier release live again; the draft is left as it is      |
 | `withdraw-map`   | `withdraw_map`   | Take a map down for good (needs `--yes`)                            |
-| `list-activity`  | `list_activity`  | The workspace's 50 most recent events                               |
+| `list-activity`  | `list_activity`  | The workspace's events of the last month, a page at a time          |
 | `invite-person`  | `invite_person`  | Invite a person by a link you give them; nothing is emailed         |
 | `list-invitations` | `list_invitations` | List the invitations not yet accepted                           |
 | `revoke-invitation` | `revoke_invitation` | Stop an invitation's link from working                        |

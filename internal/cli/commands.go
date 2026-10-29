@@ -220,9 +220,10 @@ func commands() []*command {
 		{
 			Name: "list-activity", Tool: "list_activity", NeedsKey: true, ReadOnly: true,
 			Summary: "The workspace's recent activity",
-			Description: "Lists the workspace's 50 most recent events, newest first: what was done, to what, by whom, " +
-				"and when.",
-			Flags:   []flagSpec{argsFlag},
+			Description: "Lists the workspace's events of the last month, newest first: what was done, to what, by " +
+				"whom, and when. Returns a page under events; while nextCursor is not null, pass it as --cursor for " +
+				"the next page.",
+			Flags:   []flagSpec{limitFlag, cursorFlag, argsFlag},
 			Example: "snaphop-maps list-activity",
 		},
 		{

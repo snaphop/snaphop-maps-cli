@@ -153,6 +153,7 @@ func TestCommandsCallTheirTools(t *testing.T) {
 		{"account", []string{"get-account"}, "get_account", `{}`},
 		{"installation", []string{"get-installation"}, "get_installation", `{}`},
 		{"releases", []string{"list-releases", "m1"}, "list_releases", `{"id":"m1"}`},
+		{"activity page", []string{"list-activity", "--limit", "5", "--cursor", "YWN0aXZpdHk6"}, "list_activity", `{"cursor":"YWN0aXZpdHk6","limit":5}`},
 		{"releases page", []string{"list-releases", "m1", "--limit", "2", "--cursor", "cmVsZWFzZXM6Mg"}, "list_releases", `{"cursor":"cmVsZWFzZXM6Mg","id":"m1","limit":2}`},
 		{"rollback", []string{"rollback-map", "m1", "--release", "2"}, "rollback_map", `{"id":"m1","release":2}`},
 		{"rollback expecting a release", []string{"rollback-map", "--id", "m1", "--release", "1", "--expected-active", "3"},

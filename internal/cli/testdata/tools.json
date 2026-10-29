@@ -568,13 +568,23 @@
     {
       "name": "list_activity",
       "title": "List activity",
-      "description": "Lists the workspace's 50 most recent events, newest first: what was done, to what, by whom, and when.",
+      "description": "Lists the workspace's events of the last month, newest first: what was done, to what, by whom, and when. Returns a page of them; while nextCursor is not null, pass it as cursor for the next page.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "apiKey": {
             "type": "string",
             "description": "The key register_agent returned. Leave it out when the client sends it as an Authorization bearer header."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "How many to return. Defaults to 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "The nextCursor the previous page returned. Leave it out for the first page."
           }
         },
         "required": [],
