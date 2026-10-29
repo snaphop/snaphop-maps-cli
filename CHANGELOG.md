@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.7.0 — 2026-10-29
+
 ### Changed
 
 - `list-activity` takes `--limit` and `--cursor`, since SnapHop Maps pages the activity (its ADR 0047). It answers
