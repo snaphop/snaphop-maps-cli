@@ -183,8 +183,8 @@ Otherwise the user may end up with two maps.
 ## More
 
 - `snaphop-maps get-account` shows the account the key belongs to: its workspace, role and what the role permits.
-  `snaphop-maps list-activity` lists the workspace's 50 most recent events, such as publications, rollbacks and
-  withdrawals, and who did them.
+  `snaphop-maps list-activity` lists the workspace's events of the last month, such as publications, rollbacks and
+  withdrawals, and who did them, under `events`, newest first. It pages the same way as `list-maps`.
 - `snaphop-maps help COMMAND` explains one command, and `snaphop-maps schema` describes every command as JSON.
 - `snaphop-maps guide` returns the service's own instructions and limits.
 - `snaphop-maps tools` lists the service's tools, and `snaphop-maps call TOOL --args JSON` calls any of them.
