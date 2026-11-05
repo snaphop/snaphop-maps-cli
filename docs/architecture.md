@@ -8,7 +8,8 @@ of the service's stateless Streamable HTTP MCP endpoint, not a second map implem
 - `cmd/snaphop-maps/`: entry point, version and process exit handling.
 - `internal/cli/`: command table, argument parsing, help and schema, key selection, diagnostics and command orchestration.
 - `internal/mcp/`: JSON-RPC requests to `/mcp`, bounded response reading, structured results and transport errors.
-- `internal/credentials/`: per-service accounts, replacement history and platform-specific file locking.
+- `internal/credentials/`: per-service accounts, replacement history, permission repair and platform-specific file
+  locking.
 - `internal/atomicfile/`: complete file replacement and confined writes used by credentials and skill installation.
 - `skills/`: embedded usage skill; `.agents/skills/`: development review workflows, linked from `.claude/skills/`.
 - `scripts/`: coverage, local verification and release tooling. `security/`: scanner policy and regression suite.

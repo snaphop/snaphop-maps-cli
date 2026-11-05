@@ -132,7 +132,8 @@ On success, standard output holds one JSON document: the tool's structured resul
 it. `--pretty` indents it. On failure, standard error holds `{"error": {"code", "message", "hint", ...}}`, one JSON
 document per line, `--pretty` or not. When the service refused, `code` is the service's own code, or `REFUSED`
 when it gave none, the error holds every field the service gave, and `hint` is the next step to take: this
-program's for the codes it knows, and otherwise the service's own. A warning, such as a key
+program's for the codes it knows, and otherwise the service's own. A 401 that is not the service's own refusal,
+such as a proxy's, is `HTTP_401` with exit status 4 and says nothing about the key. A warning, such as a key
 about to expire, is `{"warning": {...}}` on standard error and does not change the exit status.
 
 | Status | Meaning                                                                                                 |
@@ -155,12 +156,13 @@ The key the service issues is the account's only credential, and the service sho
 it, and refuse to send anything when they could not keep it (ADR 0005). The file is created with mode `0600`,
 written whole, synced and renamed into place, under a lock so that commands run at the same time never lose each
 other's keys. A file found readable by others, such as a copy made by hand, is made `0600` when it is read, with
-the warning `CREDENTIALS_EXPOSED`. It holds one account per service address, and a kept key is only ever sent to the service it was
-kept under.
+the warning `CREDENTIALS_EXPOSED`. It holds one account per service address, and a kept key is only ever sent to
+the service it was kept under. No JSON flag reads the file as a tool's arguments (`INPUT_REFUSED`).
 
 A command sends the first key it finds: `--api-key`, then `$SNAPHOP_MAPS_API_KEY`, then the file. The key goes in
-an `Authorization` bearer header; a key you write into `--args` as `apiKey` goes as that argument instead. `$SNAPHOP_MAPS_API_KEY` is only sent to the service the environment names,
-`$SNAPHOP_MAPS_URL` or else `https://maps.snaphop.ai`, so `--url` alone cannot send it anywhere else (ADR 0004).
+an `Authorization` bearer header; a key you write into `--args` as `apiKey` goes as that argument instead.
+`$SNAPHOP_MAPS_API_KEY` is only sent to the service the environment names, `$SNAPHOP_MAPS_URL` or else
+`https://maps.snaphop.ai`, so `--url` alone cannot send it anywhere else (ADR 0004).
 Once `replace-key` has replaced the key the variable holds, however many replacements ago, the kept key is sent
 instead, with the warning `ENVIRONMENT_KEY_REPLACED`.
 A key never appears in an error or a warning: one echoed back, by a mistyped command line or by an error body, is

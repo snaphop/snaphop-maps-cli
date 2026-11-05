@@ -14,6 +14,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 - A tool's answer is decoded once for a new key and a refused publication, and a server-sent event's reply is read
   in place, so a large answer is parsed one time fewer and copied less: about 16% less memory for an 8 MiB answer.
   A refused publication is now reported even when another field of the answer, such as `id`, has an unexpected type.
+- `SKILL.md`, the design contract and the requirements no longer say that every command prints JSON: `help` prints
+  text and `skill` prints Markdown. The verification guide lists Verify's Linux check and security jobs.
 
 ### Security
 

@@ -28,5 +28,5 @@ when evidence is missing. Whole-queue reviews follow [`review-prs`](.agents/skil
    test bypasses or weakened security exceptions. Keep license text intact.
 
 Run focused checks when useful, then [`scripts/ci-local.sh`](scripts/ci-local.sh) before PR handoff. Check the
-separate security workflow as [verification](docs/verification.md) describes. A Linux run cannot prove the native
+Verify workflow's security job and native macOS and Windows jobs as [verification](docs/verification.md) describes. A Linux run cannot prove the native
 macOS and Windows locking paths. Merging does not publish a binary or update an umbrella repository pointer.
