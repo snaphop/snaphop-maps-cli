@@ -411,14 +411,20 @@ func (inv *invocation) readJSON(flagName, raw string) (any, int, bool) {
 			return nil, inv.usage("INVALID_FLAG", "Only one flag can read standard input.", "Give the others inline or as @file."), false
 		}
 		inv.stdinUsed = true
-		data, err = readLimited(inv.env.Stdin)
 		source += " (standard input)"
+		if inv.credentialsFile(inv.env.Stdin) {
+			return nil, inv.refuseCredentials(source), false
+		}
+		data, err = readLimited(inv.env.Stdin)
 		if err != nil && !errors.Is(err, errInputTooLarge) {
 			return nil, inv.fail("INPUT_UNREADABLE", "Cannot read standard input: "+err.Error(), "Give the JSON inline or as @file."), false
 		}
 	case strings.HasPrefix(raw, "@"):
 		data, err = inv.readFile(raw[1:])
 		source += " (" + raw[1:] + ")"
+		if errors.Is(err, errCredentialsFile) {
+			return nil, inv.refuseCredentials(source), false
+		}
 		if err != nil && !errors.Is(err, errInputTooLarge) {
 			return nil, inv.usage("INPUT_UNREADABLE", fmt.Sprintf("Cannot read %s for --%s: %v", raw[1:], flagName, err), "Give an existing file after @."), false
 		}
@@ -449,7 +455,35 @@ func (inv *invocation) readFile(name string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
+	if inv.credentialsFile(file) {
+		return nil, errCredentialsFile
+	}
 	return readLimited(file)
+}
+
+// errCredentialsFile is an input that is the credentials file.
+var errCredentialsFile = errors.New("it is the credentials file")
+
+// credentialsFile says whether an input is the credentials file this run uses, as the same file and by
+// whatever name or link. Its keys go only to the services that issued them, never into arguments.
+func (inv *invocation) credentialsFile(input io.Reader) bool {
+	file, ok := input.(interface{ Stat() (os.FileInfo, error) })
+	if !ok {
+		return false
+	}
+	info, err := file.Stat()
+	store, storeErr := inv.store()
+	if err != nil || storeErr != nil {
+		return false
+	}
+	kept, err := os.Stat(store.Path)
+	return err == nil && os.SameFile(info, kept)
+}
+
+// refuseCredentials reports an input that is the credentials file.
+func (inv *invocation) refuseCredentials(source string) int {
+	return inv.usage("INPUT_REFUSED", source+" is the credentials file. Its keys are only ever sent to the services that issued them, never as a tool's arguments.",
+		"Give the tool's own JSON instead. To see which key is kept, run `snaphop-maps credentials`, which never shows the key itself.")
 }
 
 // readLimited reads everything, and fails with errInputTooLarge rather than cut an input short.

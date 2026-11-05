@@ -24,7 +24,8 @@ processes, logs and transcripts may observe its arguments and output.
   over http to a loopback address. The CLI MUST NOT follow redirects, which could carry a request to another host.
 - A key kept in the credentials file MUST only be sent to the service address it was kept under. A key from
   `$SNAPHOP_MAPS_API_KEY` MUST only be sent to the service the environment names, `$SNAPHOP_MAPS_URL` or else the
-  default, never to one that `--url` alone names (ADR 0004).
+  default, never to one that `--url` alone names (ADR 0004). A JSON flag MUST NOT read the credentials file, by any
+  name or link, as `@file` or standard input, so its keys never travel as another tool's arguments.
 - The credentials file MUST be created readable only by its owner (`0600`; a directory the CLI creates for it is
   `0700`), written whole, synced and renamed into place, so that an interrupted write or a crash leaves the previous
   file intact. Every writer MUST hold the file's lock from reading it to renaming its replacement, and decide what to

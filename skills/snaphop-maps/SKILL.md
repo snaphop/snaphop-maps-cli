@@ -54,7 +54,8 @@ snaphop-maps create-map --name "Coffee in Lisbon" --style positron \
   opening view: `--view '{"center": [-9.14, 38.71], "zoom": 13}'`. `--controls '{"cooperativeGestures": true}'`
   makes a page scroll past an embedded map until the reader uses two fingers or a modifier key.
 - A long marker list is easier to pass from a file, `--markers @markers.json`, or from standard input,
-  `--markers -`. Either may hold up to 8 MiB (`INPUT_TOO_LARGE` beyond that).
+  `--markers -`. Either may hold up to 8 MiB (`INPUT_TOO_LARGE` beyond that). The credentials file is never read
+  as an argument (`INPUT_REFUSED`).
 - `--publish=false` keeps the map a draft, and `snaphop-maps publish-map MAP_ID` publishes it later. A switch takes
   its value after `=`: `--publish false` is refused, since `false` would be read as the map's id.
 

@@ -10,6 +10,9 @@ section with a `### Security` subsection is a security release, and its notes sa
 - A 401 is reported as `API_KEY_INVALID`, with its advice to register again, only when its body is the service's
   own JSON error. A 401 from anything else, such as a proxy's page or an empty answer, is now `HTTP_401` with exit
   status 4 and a hint not to register again or replace the key, which would have replaced the account's only key.
+- A JSON flag such as `--args` or `--markers` refuses the credentials file, by any name, hard link or symbolic link,
+  as `@file` or standard input, with `INPUT_REFUSED` (exit status 2) and nothing sent. Read as arguments, it would
+  have sent every kept key, for every service, to the service the command names.
 
 ## 0.7.0 — 2026-10-29
 

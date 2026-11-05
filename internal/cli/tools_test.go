@@ -2,9 +2,13 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -224,6 +228,73 @@ func TestJSONArgumentsFromFilesAndStandardInput(t *testing.T) {
 	sent, _ := json.Marshal(s.only().Arguments)
 	if string(sent) != `{"markers":[{"position":[1,2],"title":"From stdin"}],"name":"N","view":{"center":[1,2],"zoom":3}}` {
 		t.Fatalf("sent %s", sent)
+	}
+}
+
+// TestTheCredentialsFileIsNeverAnArgument: the credentials file holds the key of every service kept
+// there, so no JSON flag reads it, by its own name, another or a link, as a file or as standard input,
+// and nothing is sent, even to a tool that takes no key.
+func TestTheCredentialsFileIsNeverAnArgument(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, newService(t, never(t)))
+	h.keep(credentials.Account{APIKey: "sh_agent_" + strings.Repeat("K", 43)})
+	path := h.store().Path
+	names := []string{path, "credentials.json", "./sub/../credentials.json"}
+	if err := os.Mkdir(filepath.Join(h.dir, "sub"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(path, filepath.Join(h.dir, "hard.json")); err == nil {
+		names = append(names, "hard.json")
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Symlink(path, filepath.Join(h.dir, "link.json")); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, "link.json")
+	}
+	for _, name := range names {
+		for _, args := range [][]string{
+			{"call", "register_agent", "--no-save", "--args", "@" + name},
+			{"create-map", "--api-key", "k", "--name", "N", "--markers", "@" + name},
+		} {
+			p := h.run(args...).failure(t, exitUsage, "INPUT_REFUSED")
+			if !strings.Contains(p.Message, name) || strings.Contains(p.Message, "KKKK") {
+				t.Fatalf("%v: error = %+v", args, p)
+			}
+		}
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	h.stdin = file
+	if p := h.run("call", "register_agent", "--no-save", "--args", "-").failure(t, exitUsage, "INPUT_REFUSED"); !strings.Contains(p.Message, "standard input") {
+		t.Fatalf("error = %+v", p)
+	}
+}
+
+// TestOtherFilesAreArguments: a file that is not the credentials file is read, from standard input
+// too, and so is one when no credentials file can be named.
+func TestOtherFilesAreArguments(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) })
+	h := newHarness(t, s)
+	h.keep(credentials.Account{APIKey: "k"})
+	file, err := os.Open(h.file("args.json", `{"limit": 2}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	h.stdin = file
+	h.run("list-maps", "--args", "-").success(t)
+	delete(h.vars, "SNAPHOP_MAPS_CREDENTIALS")
+	h.configDir = func() (string, error) { return "", errors.New("no configuration directory") }
+	h.run("list-maps", "--api-key", "k", "--args", "@args.json").success(t)
+	for _, r := range s.received() {
+		if r.Arguments["limit"] != 2.0 {
+			t.Fatalf("requests = %+v", s.received())
+		}
 	}
 }
 
