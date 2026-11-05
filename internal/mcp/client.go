@@ -22,6 +22,12 @@ const ProtocolVersion = "2025-06-18"
 // MaxResponseBytes bounds how much of an answer is read.
 const MaxResponseBytes = 8 << 20
 
+// MaxMessageBytes bounds a message the server gives with an error, as it is reported.
+const MaxMessageBytes = 1000
+
+// excerptBytes bounds the start of a body quoted in an error message.
+const excerptBytes = 200
+
 // Client calls one MCP endpoint.
 type Client struct {
 	// Endpoint is the server's MCP address, such as https://maps.snaphop.ai/mcp.
@@ -151,7 +157,7 @@ func (c *Client) Call(ctx context.Context, method string, params any, apiKey str
 		return nil, &Error{Code: "INVALID_RESPONSE", Message: "The server's answer is not a JSON-RPC reply: " + c.excerpt(data), Status: resp.StatusCode}
 	}
 	if answer.Error != nil {
-		return nil, &Error{Code: fmt.Sprintf("JSONRPC_%d", answer.Error.Code), Message: answer.Error.Message, Status: resp.StatusCode}
+		return nil, &Error{Code: fmt.Sprintf("JSONRPC_%d", answer.Error.Code), Message: c.message(answer.Error.Message), Status: resp.StatusCode}
 	}
 	if string(answer.ID) != "1" || len(answer.Result) == 0 {
 		return nil, &Error{Code: "INVALID_RESPONSE", Message: "The server's reply has no result for this request.", Status: resp.StatusCode}
@@ -256,7 +262,7 @@ func (c *Client) httpError(resp *http.Response, data []byte) *Error {
 		failure.Code = "EDGE_CHALLENGE"
 		failure.Message = "The edge in front of the service challenged this request as automated traffic, so it never reached the service."
 	case json.Unmarshal(data, &body) == nil && json.Unmarshal(body.Error, &refusal) == nil && refusal.Code != "":
-		failure.Code, failure.Message, failure.FromService = refusal.Code, refusal.Message, true
+		failure.Code, failure.Message, failure.FromService = c.message(refusal.Code), c.message(refusal.Message), true
 	case json.Unmarshal(body.Error, &sentence) == nil && strings.TrimSpace(sentence) != "":
 		failure.Message += ": " + c.excerpt([]byte(sentence))
 		failure.FromService = true
@@ -269,12 +275,24 @@ func (c *Client) httpError(resp *http.Response, data []byte) *Error {
 // excerpt is the start of a body, on one line and without secrets, for an error message. Bytes that
 // are not UTF-8, as in a page in another encoding, are each shown as U+FFFD.
 func (c *Client) excerpt(data []byte) string {
-	text := strings.ToValidUTF8(strings.Join(strings.Fields(string(data)), " "), "\uFFFD")
+	return c.shorten(strings.Join(strings.Fields(string(data)), " "), excerptBytes)
+}
+
+// message is a message the server gave, without secrets and no longer than MaxMessageBytes, so that
+// whatever answers cannot flood the caller's standard error.
+func (c *Client) message(text string) string {
+	return c.shorten(text, MaxMessageBytes)
+}
+
+// shorten takes secrets out of text, then cuts it to at most limit bytes and a mark that it was cut.
+// Secrets go first, since cutting one short would leave part of it for any later redaction to miss.
+func (c *Client) shorten(text string, limit int) string {
+	text = strings.ToValidUTF8(text, "\uFFFD")
 	if c.Redact != nil {
 		text = c.Redact(text)
 	}
-	if len(text) > 200 {
-		text = text[:200]
+	if len(text) > limit {
+		text = text[:limit]
 		// Only a character the cut split can be invalid now.
 		for !utf8.ValidString(text) {
 			text = text[:len(text)-1]

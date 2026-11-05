@@ -5,6 +5,13 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Fixed
+
+- A message that a server, or anything answering in its place, gives with an error is cut to 1000 bytes on standard
+  error, once keys are taken out of it. One could fill a line of standard error with up to 8 MiB.
+- An error whose redaction would have left no JSON, when a key the run knows also appears as a number in it, is
+  still written: its names, strings and numbers are redacted one by one. It was written as an empty line.
+
 ### Security
 
 - A 401 is reported as `API_KEY_INVALID`, with its advice to register again, only when its body is the service's

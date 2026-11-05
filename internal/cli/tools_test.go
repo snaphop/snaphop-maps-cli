@@ -1116,3 +1116,35 @@ func TestRefusalsAboutPeopleSayWhatToDoNext(t *testing.T) {
 		})
 	}
 }
+
+// TestARedactedErrorStaysJSON: a key the run knows can be digits that a number in an error also holds.
+// Taken out of the text, it would leave no JSON, so it is taken out of each value instead, and the error
+// is still one JSON document without the key.
+func TestARedactedErrorStaysJSON(t *testing.T) {
+	t.Parallel()
+	const key = "12345678"
+	h := newHarness(t, newService(t, func(request) answer {
+		return refusal(map[string]any{"error": map[string]any{
+			"code": "LIMIT_REACHED", "message": "key " + key + " is over its limit", "limit": 12345678, "used": 7,
+			"list": []any{12345678, "a " + key, true, nil}, key: "named",
+		}})
+	}))
+	h.vars["SNAPHOP_MAPS_API_KEY"] = key
+	o := h.run("list-maps")
+	p := o.failure(t, exitRefused, "LIMIT_REACHED")
+	if strings.Contains(o.stderr, key) || strings.Count(o.stderr, "\n") != 1 || !strings.Contains(p.Message, "[REDACTED]") {
+		t.Fatalf("stderr = %s", o.stderr)
+	}
+	var document struct {
+		Error map[string]any `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(o.stderr), &document); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{"limit": "[REDACTED]", "used": 7.0, "list": []any{"[REDACTED]", "a [REDACTED]", true, nil}, "[REDACTED]": "named"}
+	for name, value := range want {
+		if !reflect.DeepEqual(document.Error[name], value) {
+			t.Errorf("error.%s = %v, want %v", name, document.Error[name], value)
+		}
+	}
+}
