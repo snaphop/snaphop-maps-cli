@@ -176,6 +176,8 @@ Refusals you will meet:
 - `API_KEY_INVALID`: the key is unknown, expired or revoked. Check `snaphop-maps credentials`. If `hint` says another key is
   kept, use that one. Only if there is no newer key, register again with `--overwrite`, which starts a new account
   and replaces the kept key.
+- `HTTP_401` (exit 4) is a refusal from something other than the service, such as a proxy. It says nothing about the
+  key: never register again or replace the key because of it. Check `--url` and try again.
 
 Never repeat `create-map` after a failed exchange without first running `list-maps` and looking for the map by name.
 Otherwise the user may end up with two maps.

@@ -324,6 +324,32 @@ func TestATimeoutWhileTheAnswerArrivesIsATimeout(t *testing.T) {
 	}
 }
 
+// TestAnErrorBodySaysWhetherTheServiceSentIt: the service writes its refusals as a JSON object with an
+// error, a code and message or a sentence; anything else came from something in between.
+func TestAnErrorBodySaysWhetherTheServiceSentIt(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		body        string
+		code        string
+		message     string
+		fromService bool
+	}{
+		"refusal":    {`{"error":{"code":"API_KEY_INVALID","message":"Unknown key"}}`, "API_KEY_INVALID", "Unknown key", true},
+		"sentence":   {`{"error":"Authentication is unavailable"}`, "HTTP_401", "Unauthorized: Authentication is unavailable", true},
+		"blank":      {`{"error":" "}`, "HTTP_401", `Unauthorized: {"error":" "}`, false},
+		"no code":    {`{"error":{"message":"No"}}`, "HTTP_401", `Unauthorized: {"error":{"message":"No"}}`, false},
+		"other JSON": {`{"message":"Unauthorized"}`, "HTTP_401", `Unauthorized: {"message":"Unauthorized"}`, false},
+		"page":       {"<html>401</html>", "HTTP_401", "Unauthorized: <html>401</html>", false},
+		"nothing":    {"", "HTTP_401", "Unauthorized", false},
+	}
+	for name, tc := range cases {
+		_, err := answering(401, nil, tc.body).Call(context.Background(), "ping", nil, "k")
+		if err == nil || err.Code != tc.code || err.Message != tc.message || err.FromService != tc.fromService {
+			t.Errorf("%s: error = %+v", name, err)
+		}
+	}
+}
+
 func TestRetryAfterIsKept(t *testing.T) {
 	t.Parallel()
 	_, err := answering(429, http.Header{"Retry-After": {"120"}}, "").Call(context.Background(), "ping", nil, "")

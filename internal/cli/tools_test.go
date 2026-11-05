@@ -877,6 +877,29 @@ func TestAnUnknownToolIsNotCalledSafeToRepeat(t *testing.T) {
 	}
 }
 
+// TestA401NotFromTheServiceNeverLeadsToLosingTheKey: a 401 without the service's JSON error, such as
+// a proxy's page or an empty body, says nothing of the key, so nothing advises registering over it.
+func TestA401NotFromTheServiceNeverLeadsToLosingTheKey(t *testing.T) {
+	t.Parallel()
+	for name, body := range map[string]string{
+		"empty":       "",
+		"page":        "<html><body>401 Authorization Required</body></html>",
+		"other JSON":  `{"message":"Unauthorized"}`,
+		"blank error": `{"error":"  "}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, newService(t, func(request) answer { return answer{status: http.StatusUnauthorized, body: body} }))
+			h.keep(credentials.Account{APIKey: "shk_kept"})
+			p := h.run("list-maps").failure(t, exitTransport, "HTTP_401")
+			if p.OutcomeKnown == nil || !*p.OutcomeKnown || strings.Contains(p.Hint, "--overwrite") ||
+				!strings.Contains(p.Hint, "Do not register again") {
+				t.Fatalf("error = %+v", p)
+			}
+		})
+	}
+}
+
 // TestA401WithoutAKeyIsNotTheKeysRefusal: nothing sent a key, so something else refused.
 func TestA401WithoutAKeyIsNotTheKeysRefusal(t *testing.T) {
 	t.Parallel()

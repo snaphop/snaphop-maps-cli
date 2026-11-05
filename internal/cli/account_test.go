@@ -438,7 +438,7 @@ func TestARefusedKeyNeverLeadsToLosingTheKeptOne(t *testing.T) {
 				if r.Auth == "" {
 					return refusal(map[string]any{"error": map[string]any{"code": "API_KEY_INVALID", "message": "unknown"}})
 				}
-				return answer{status: http.StatusUnauthorized}
+				return answer{status: http.StatusUnauthorized, body: `{"error":"Authentication is unavailable"}`}
 			}))
 			h.keep(credentials.Account{APIKey: "shk_kept", ExpiresAt: "2026-09-29T00:00:00Z"})
 			o := h.run(append([]string{"list-maps"}, set(h)...)...)

@@ -35,7 +35,7 @@ processes, logs and transcripts may observe its arguments and output.
 - No command may silently lose a kept key. Registering over a kept account needs `--overwrite`, and replacing a key
   replaces only the key that was used. A command that would issue a key MUST first prove it can keep it, and MUST
   keep it before printing it (ADR 0005). A hint MUST NOT advise registering again while another key is kept for the
-  service.
+  service, nor after a 401 whose body is not the service's own JSON error, since a proxy or gateway may send one.
 - Only the answer that issued a key may print it. `credentials`, errors, warnings and hints MUST NOT contain a key:
   a key the run knows, or anything shaped like a SnapHop key, that is echoed back, by the command line or by a
   response body, is redacted, and a body is redacted before it is shortened.

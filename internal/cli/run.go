@@ -780,9 +780,9 @@ func (inv *invocation) redactText(text string) string {
 // transport reports a failed exchange, saying what repeating the request would do.
 func (inv *invocation) transport(failure *mcp.Error, tool string) int {
 	// The service's security chain refuses a header's unknown, expired or revoked key before any tool
-	// sees it: a refusal like the tools' own, and nothing was carried out. Without a key sent, a 401
-	// comes from something else.
-	if failure.Status == http.StatusUnauthorized && inv.header {
+	// sees it, with a JSON error: a refusal like the tools' own, and nothing was carried out. Without a
+	// key sent, or without that body, a 401 comes from something else, and says nothing of the key.
+	if failure.Status == http.StatusUnauthorized && inv.header && failure.FromService {
 		inv.report(Problem{
 			Code:    "API_KEY_INVALID",
 			Message: "The service refused the API key: it is unknown, expired or revoked (" + failure.Message + ").",
@@ -803,6 +803,10 @@ func (inv *invocation) transport(failure *mcp.Error, tool string) int {
 		problem.Hint = "Repeating will not help. Report it to SnapHop at security@snaphop.com or through the repository's issues."
 	case failure.Status == http.StatusTooManyRequests:
 		problem.Hint = "Wait and try again later" + retryAfter(failure.RetryAfter) + "."
+	case failure.Status == http.StatusUnauthorized && inv.header:
+		problem.Hint = "Something other than the service refused the request before the service saw the key, so the key may be good. " +
+			"Check that --url names a SnapHop Maps service and that no proxy in between asks for its own sign-in, then try again. " +
+			"Do not register again or replace the key because of this answer: registering would replace the kept key."
 	default:
 		problem.Hint = "Nothing was carried out. Check that --url names a SnapHop Maps service, such as " + DefaultURL + "."
 	}

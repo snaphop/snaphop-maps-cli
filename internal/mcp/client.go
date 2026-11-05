@@ -52,6 +52,9 @@ type Error struct {
 	Status int `json:"status,omitempty"`
 	// RetryAfter is the answer's Retry-After header, when it had one.
 	RetryAfter string `json:"retryAfter,omitempty"`
+	// FromService says an HTTP error's body was a JSON object with an error, as the service writes its
+	// own refusals, rather than a page or nothing from something between here and the service.
+	FromService bool `json:"-"`
 }
 
 func (e *Error) Error() string { return e.Code + ": " + e.Message }
@@ -231,7 +234,7 @@ func eventFor(data []byte) []byte {
 
 // httpError describes an answer other than 200: the server's own error body when it sent one,
 // and otherwise the status. An edge's bot challenge is named, since an agent can do nothing about
-// it but report it.
+// it but report it. FromService says the body had the shape of the service's own errors.
 func (c *Client) httpError(resp *http.Response, data []byte) *Error {
 	failure := &Error{
 		Code:       fmt.Sprintf("HTTP_%d", resp.StatusCode),
@@ -239,19 +242,24 @@ func (c *Client) httpError(resp *http.Response, data []byte) *Error {
 		Status:     resp.StatusCode,
 		RetryAfter: resp.Header.Get("Retry-After"),
 	}
+	// The service's error is an object with a code, or, from its security chain, a sentence.
 	var body struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+		Error json.RawMessage `json:"error"`
 	}
+	var refusal struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	var sentence string
 	switch {
 	case strings.EqualFold(resp.Header.Get("cf-mitigated"), "challenge"):
 		failure.Code = "EDGE_CHALLENGE"
 		failure.Message = "The edge in front of the service challenged this request as automated traffic, so it never reached the service."
-	case json.Unmarshal(data, &body) == nil && body.Error.Code != "":
-		failure.Code = body.Error.Code
-		failure.Message = body.Error.Message
+	case json.Unmarshal(data, &body) == nil && json.Unmarshal(body.Error, &refusal) == nil && refusal.Code != "":
+		failure.Code, failure.Message, failure.FromService = refusal.Code, refusal.Message, true
+	case json.Unmarshal(body.Error, &sentence) == nil && strings.TrimSpace(sentence) != "":
+		failure.Message += ": " + c.excerpt([]byte(sentence))
+		failure.FromService = true
 	case len(bytes.TrimSpace(data)) > 0:
 		failure.Message += ": " + c.excerpt(data)
 	}
