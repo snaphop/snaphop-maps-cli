@@ -219,15 +219,24 @@ func mediaType(resp *http.Response) string {
 
 // eventFor finds the reply to this request among server-sent events: the data of the first event
 // that is a JSON-RPC message with this request's id. Without one, the body is returned as it came.
+// The events are read in place, as slices of the body, which may be large: a reply in one data line
+// is returned without a copy.
 func eventFor(data []byte) []byte {
-	for _, event := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n\n") {
-		var lines []string
-		for _, line := range strings.Split(event, "\n") {
-			if value, ok := strings.CutPrefix(line, "data:"); ok {
-				lines = append(lines, strings.TrimPrefix(value, " "))
+	text := data
+	if bytes.Contains(text, []byte("\r\n")) {
+		text = bytes.ReplaceAll(text, []byte("\r\n"), []byte("\n"))
+	}
+	for event := range bytes.SplitSeq(text, []byte("\n\n")) {
+		var lines [][]byte
+		for line := range bytes.SplitSeq(event, []byte("\n")) {
+			if value, ok := bytes.CutPrefix(line, []byte("data:")); ok {
+				lines = append(lines, bytes.TrimPrefix(value, []byte(" ")))
 			}
 		}
-		message := []byte(strings.Join(lines, "\n"))
+		message := bytes.Join(lines, []byte("\n"))
+		if len(lines) == 1 {
+			message = lines[0]
+		}
 		var probe struct {
 			ID json.RawMessage `json:"id"`
 		}

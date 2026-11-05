@@ -273,6 +273,16 @@ func TestCallReadsTheReplyAmongServerSentEvents(t *testing.T) {
 	}
 }
 
+// TestCallReadsAReplyInOneDataLine is the usual stream: the reply alone, in one line, with no CR.
+func TestCallReadsAReplyInOneDataLine(t *testing.T) {
+	t.Parallel()
+	body := "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"structuredContent\":{\"id\":\"m1\"}}}\n\n"
+	result, err := answering(200, http.Header{"Content-Type": {"text/event-stream"}}, body).CallTool(context.Background(), "get_map", nil, "k")
+	if err != nil || string(result.Structured) != `{"id":"m1"}` {
+		t.Fatalf("CallTool = %s, %v", result.Structured, err)
+	}
+}
+
 // TestASecretIsRedactedBeforeTheBodyIsCut is a key that an error body echoes where the excerpt ends:
 // cut first, only part of it would be left, and no later redaction could recognise it.
 func TestASecretIsRedactedBeforeTheBodyIsCut(t *testing.T) {

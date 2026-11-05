@@ -683,9 +683,15 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 		return inv.refused(result.Structured)
 	}
 	// An answer that carries no key is not one this program can read: the account may have been
-	// opened, or its key replaced, without the key reaching here.
-	var issued credentials.Account
-	_ = json.Unmarshal(result.Structured, &issued)
+	// opened, or its key replaced, without the key reaching here. The answer is read once, for a key and
+	// for a refused publication, since it may be large; what is not an object leaves both out.
+	var answer struct {
+		credentials.Account
+		ID               string          `json:"id"`
+		PublicationError json.RawMessage `json:"publicationError"`
+	}
+	_ = json.Unmarshal(result.Structured, &answer)
+	issued := answer.Account
 	inv.sent = inv.first(issued.APIKey, inv.sent)
 	keyless := saves && issued.APIKey == ""
 	notKept := ""
@@ -707,11 +713,7 @@ func (inv *invocation) callTool(tool string, arguments map[string]any) int {
 	if notKept != "" {
 		return inv.notSaved(notKept)
 	}
-	var answer struct {
-		ID               string          `json:"id"`
-		PublicationError json.RawMessage `json:"publicationError"`
-	}
-	if json.Unmarshal(result.Structured, &answer) == nil && len(answer.PublicationError) > 0 && string(answer.PublicationError) != "null" {
+	if len(answer.PublicationError) > 0 && string(answer.PublicationError) != "null" {
 		inv.report(Problem{
 			Code:    "PUBLICATION_REFUSED",
 			Message: "The map is saved as a draft, but its publication was refused; publicationError says why.",

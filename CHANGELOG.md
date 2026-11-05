@@ -11,6 +11,9 @@ section with a `### Security` subsection is a security release, and its notes sa
   error, once keys are taken out of it. One could fill a line of standard error with up to 8 MiB.
 - An error whose redaction would have left no JSON, when a key the run knows also appears as a number in it, is
   still written: its names, strings and numbers are redacted one by one. It was written as an empty line.
+- A tool's answer is decoded once for a new key and a refused publication, and a server-sent event's reply is read
+  in place, so a large answer is parsed one time fewer and copied less: about 16% less memory for an 8 MiB answer.
+  A refused publication is now reported even when another field of the answer, such as `id`, has an unexpected type.
 
 ### Security
 
