@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 type roundTrip func(*http.Request) (*http.Response, error)
@@ -378,3 +379,28 @@ func TestTimeoutSaysTheOutcomeIsUnknown(t *testing.T) {
 type failingReader struct{}
 
 func (failingReader) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
+
+// TestAServersMessageIsBounded: a message given with an error, by the service or anything that
+// answers in its place, is cut short once its secrets are out, so it cannot flood standard error.
+func TestAServersMessageIsBounded(t *testing.T) {
+	t.Parallel()
+	key := "sh_agent_" + strings.Repeat("A", 43)
+	long := strings.Repeat("é", MaxMessageBytes) + key
+	for name, client := range map[string]*Client{
+		"http error":     answering(400, nil, `{"error":{"code":"BAD","message":"`+strings.Repeat("x", MaxMessageBytes-20)+key+`"}}`),
+		"json-rpc error": answering(200, nil, `{"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"`+long+`"}}`),
+		"long code":      answering(400, nil, `{"error":{"code":"`+strings.Repeat("C", 2*MaxMessageBytes)+`","message":"m"}}`),
+	} {
+		client.Redact = func(text string) string { return strings.ReplaceAll(text, key, "[REDACTED]") }
+		_, err := client.Call(context.Background(), "ping", nil, "")
+		if err == nil || len(err.Message) > MaxMessageBytes+3 || len(err.Code) > MaxMessageBytes+3 || strings.Contains(err.Message, "sh_agent_A") {
+			t.Fatalf("%s: error = %+v", name, err)
+		}
+		if name == "http error" && !strings.HasSuffix(err.Message, "[REDACTED]") {
+			t.Fatalf("%s: message = %q", name, err.Message)
+		}
+		if name == "json-rpc error" && (!strings.HasSuffix(err.Message, "...") || !utf8.ValidString(err.Message)) {
+			t.Fatalf("%s: message = %q", name, err.Message)
+		}
+	}
+}

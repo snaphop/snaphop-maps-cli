@@ -1056,9 +1056,43 @@ func (inv *invocation) text(text string) int {
 // emit writes one JSON document to standard error, always on one line, with every key taken out.
 func (inv *invocation) emit(document []byte) {
 	var out bytes.Buffer
-	_ = json.Compact(&out, inv.redact(document))
+	if json.Compact(&out, inv.redact(document)) != nil {
+		// A key this run knows can match more than text, such as digits in a number, and leave no JSON
+		// behind: then each name, string and number is redacted on its own.
+		var value any
+		decoder := json.NewDecoder(bytes.NewReader(document))
+		decoder.UseNumber()
+		_ = decoder.Decode(&value)
+		redacted, _ := json.Marshal(inv.redactValue(value))
+		out.Reset()
+		out.Write(redacted)
+	}
 	out.WriteByte('\n')
 	_, _ = inv.env.Stderr.Write(out.Bytes())
+}
+
+// redactValue is redact for a decoded document: a number that holds a key becomes the string
+// [REDACTED], so the document stays JSON.
+func (inv *invocation) redactValue(value any) any {
+	switch v := value.(type) {
+	case string:
+		return inv.redactText(v)
+	case json.Number:
+		if redacted := inv.redactText(string(v)); redacted != string(v) {
+			return redacted
+		}
+	case []any:
+		for i, item := range v {
+			v[i] = inv.redactValue(item)
+		}
+	case map[string]any:
+		redacted := map[string]any{}
+		for name, item := range v {
+			redacted[inv.redactText(name)] = inv.redactValue(item)
+		}
+		return redacted
+	}
+	return value
 }
 
 func (inv *invocation) report(problem Problem) {
