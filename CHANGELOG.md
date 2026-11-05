@@ -15,6 +15,9 @@ section with a `### Security` subsection is a security release, and its notes sa
   have sent every kept key, for every service, to the service the command names.
 - `--url http://localhost:PORT` is always dialled at `127.0.0.1`, then `::1`, as RFC 6761 has it. It no longer
   trusts a hosts file or resolver to answer for `localhost`, since a key sent there over plain http is unencrypted.
+- A credentials file others may read, such as a copy made by hand, is made readable only by its owner (`0600`)
+  when a command reads it, with the warning `CREDENTIALS_EXPOSED`, since its keys may have been read. It was only
+  made private by the next write. Windows keeps this in the file's access control list, and is unchanged.
 
 ## 0.7.0 — 2026-10-29
 

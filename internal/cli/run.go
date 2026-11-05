@@ -13,6 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -67,6 +68,9 @@ type Env struct {
 	HTTP    *http.Client
 	Now     func() time.Time
 	Version string
+	// CredentialsExposed says whether others may read a credentials file with these permissions; nil is
+	// this system's own rule.
+	CredentialsExposed func(fs.FileMode) bool
 }
 
 // Problem is a failure reported to the caller as {"error": Problem}.
@@ -331,6 +335,10 @@ func (inv *invocation) kept() found {
 				inv.found.kept = &account
 			}
 			inv.found.err = err
+			if found := store.Secure(); found != "" {
+				inv.warn("CREDENTIALS_EXPOSED", found+".", "Anyone who could read it may hold its keys. Tell the user, and run `snaphop-maps replace-key` "+
+					"for each service kept in it; if it is still readable by others, run `chmod 600` on it first.")
+			}
 		}
 	}
 	return *inv.found
@@ -522,10 +530,10 @@ func readLimited(r io.Reader) ([]byte, error) {
 // store is the credentials file this run uses.
 func (inv *invocation) store() (credentials.Store, error) {
 	if path := inv.first(*inv.strings["credentials"], inv.env.Getenv("SNAPHOP_MAPS_CREDENTIALS")); path != "" {
-		return credentials.Store{Path: inv.path(path)}, nil
+		return credentials.Store{Path: inv.path(path), Exposed: inv.env.CredentialsExposed}, nil
 	}
 	path, err := credentials.DefaultPath(inv.env.ConfigDir)
-	return credentials.Store{Path: path}, err
+	return credentials.Store{Path: path, Exposed: inv.env.CredentialsExposed}, err
 }
 
 // keyChoice is the key a command sends, where it comes from, and the account kept for the service.

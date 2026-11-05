@@ -110,6 +110,8 @@ snaphop-maps rollback-map MAP_ID --release 1
 - `$SNAPHOP_MAPS_API_KEY` is only sent to `$SNAPHOP_MAPS_URL`, or to https://maps.snaphop.ai when that is not set;
   `--url` alone never sends it elsewhere. Once `replace-key` has replaced the key it holds, the kept key is sent
   instead, with the warning `ENVIRONMENT_KEY_REPLACED`: tell the user to unset the variable.
+- A warning `CREDENTIALS_EXPOSED` means others could read the credentials file. The CLI made it private, but its keys
+  may have been read: tell the user, and run `snaphop-maps replace-key`.
 
 ## Invite the people you work for
 

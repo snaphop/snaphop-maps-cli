@@ -154,7 +154,8 @@ The key the service issues is the account's only credential, and the service sho
 `replace-key` keep it in `snaphop-maps/credentials.json` under the user's configuration directory, before they print
 it, and refuse to send anything when they could not keep it (ADR 0005). The file is created with mode `0600`,
 written whole, synced and renamed into place, under a lock so that commands run at the same time never lose each
-other's keys. It holds one account per service address, and a kept key is only ever sent to the service it was
+other's keys. A file found readable by others, such as a copy made by hand, is made `0600` when it is read, with
+the warning `CREDENTIALS_EXPOSED`. It holds one account per service address, and a kept key is only ever sent to the service it was
 kept under.
 
 A command sends the first key it finds: `--api-key`, then `$SNAPHOP_MAPS_API_KEY`, then the file. The key goes in

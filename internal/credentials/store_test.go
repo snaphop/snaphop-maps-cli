@@ -512,3 +512,44 @@ func TestAnAccountKeptUnderAFormerSpellingIsFoundAndMoved(t *testing.T) {
 		t.Fatalf("the file holds %s", data)
 	}
 }
+
+// TestSecureMakesAnExposedFilePrivate: a file others may read, as a copy made by hand may be, is made
+// its owner's alone, and said to have been; a private file, or none, is left as it is, in silence.
+func TestSecureMakesAnExposedFilePrivate(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "credentials.json")
+	if err := os.WriteFile(path, []byte(`{"version":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	found := Store{Path: path}.Secure()
+	info, _ := os.Stat(path)
+	switch {
+	case runtime.GOOS == "windows":
+		// Windows keeps who may read a file in its access control list.
+		if found != "" {
+			t.Fatalf("Secure = %q", found)
+		}
+	case !strings.Contains(found, "(mode 0644), so it was made readable only by its owner") || info.Mode().Perm() != 0o600:
+		t.Fatalf("Secure = %q, mode %v", found, info.Mode().Perm())
+	}
+	if found := (Store{Path: path}).Secure(); found != "" {
+		t.Fatalf("Secure of a private file = %q", found)
+	}
+	for _, missing := range []string{filepath.Join(dir, "absent.json"), filepath.Join(dir, "absent", "credentials.json"), dir} {
+		if found := (Store{Path: missing, Exposed: func(fs.FileMode) bool { return true }}).Secure(); found != "" {
+			t.Fatalf("Secure of %s = %q", missing, found)
+		}
+	}
+	always := Store{Path: path, Exposed: func(fs.FileMode) bool { return true }}
+	if found := always.Secure(); !strings.Contains(found, "made readable only by its owner") {
+		t.Fatalf("Secure = %q", found)
+	}
+	always.chmod = func(*os.Root, string, fs.FileMode) error { return errors.New("read-only file system") }
+	if found := always.Secure(); !strings.Contains(found, "could not be made readable only by its owner: read-only file system") {
+		t.Fatalf("Secure = %q", found)
+	}
+}

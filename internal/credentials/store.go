@@ -92,13 +92,17 @@ type Store struct {
 	Path string
 	// Wait is how long to wait for another command to release the file's lock; zero is DefaultWait.
 	Wait time.Duration
+	// Exposed says whether others than the file's owner may read a file with these permissions; nil is
+	// this system's own rule.
+	Exposed func(fs.FileMode) bool
 
-	// mkdirAll, write, openLock and tryLock default to os.MkdirAll, atomicfile.WriteIn, openLockFile
-	// and tryLockFile; tests make them fail.
+	// mkdirAll, write, openLock, tryLock and chmod default to os.MkdirAll, atomicfile.WriteIn,
+	// openLockFile, tryLockFile and os.Root's Chmod; tests make them fail.
 	mkdirAll func(string, os.FileMode) error
 	write    func(*os.Root, string, []byte, os.FileMode) error
 	openLock func(root *os.Root, name string) (*os.File, error)
 	tryLock  func(file *os.File, exclusive bool) (bool, error)
+	chmod    func(root *os.Root, name string, mode os.FileMode) error
 }
 
 // DefaultPath is the store's path under the user's configuration directory.
@@ -128,6 +132,35 @@ func (s Store) Get(service string) (Account, bool, error) {
 	}
 	_, account, found, err := f.find(s.Path, service)
 	return account, found, err
+}
+
+// Secure makes the file readable by its owner alone when others may read it, as they may a copy made
+// by hand, and says so: what it found, and whether it could change it. It says nothing when the file
+// is its owner's alone or is not there. Every write leaves the file so; this is for a file only read.
+// The file is changed inside its directory, never through a link that leads out of it.
+func (s Store) Secure() string {
+	isExposed, chmod := exposed, (*os.Root).Chmod
+	if s.Exposed != nil {
+		isExposed = s.Exposed
+	}
+	if s.chmod != nil {
+		chmod = s.chmod
+	}
+	root, err := os.OpenRoot(filepath.Dir(s.Path))
+	if err != nil {
+		return ""
+	}
+	defer root.Close()
+	name := filepath.Base(s.Path)
+	info, err := root.Stat(name)
+	if err != nil || !info.Mode().IsRegular() || !isExposed(info.Mode()) {
+		return ""
+	}
+	found := fmt.Sprintf("%s could be read by others than its owner (mode %04o)", s.Path, uint32(info.Mode().Perm()))
+	if err := chmod(root, name, 0o600); err != nil {
+		return found + ", and could not be made readable only by its owner: " + err.Error()
+	}
+	return found + ", so it was made readable only by its owner"
 }
 
 // Put keeps an account for a service address, replacing any kept for it, and leaves every other

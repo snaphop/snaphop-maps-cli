@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -567,5 +568,37 @@ func TestAnEnvironmentKeyReplacedLongAgoIsNotSent(t *testing.T) {
 	account, _ := h.kept()
 	if account.APIKey != "shk_key2" || account.AgentID != "a1" || !account.Replaced(digest("shk_key0")) || !account.Replaced(digest("shk_key1")) {
 		t.Fatalf("kept %+v", account)
+	}
+}
+
+// TestAnExposedCredentialsFileIsMadePrivate: a credentials file others may read is made its owner's
+// alone when a command reads it, and the command says so, since its keys may have been read.
+func TestAnExposedCredentialsFileIsMadePrivate(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) })
+	h := newHarness(t, s)
+	h.keep(credentials.Account{APIKey: "shk_kept"})
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(h.store().Path, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		h.exposed = func(fs.FileMode) bool { return true }
+	}
+	o := h.run("list-maps")
+	o.success(t)
+	p := problem(t, strings.TrimSpace(o.stderr), "warning")
+	if p.Code != "CREDENTIALS_EXPOSED" || !strings.Contains(p.Message, h.store().Path) ||
+		!strings.Contains(p.Message, "made readable only by its owner") || !strings.Contains(p.Hint, "replace-key") {
+		t.Fatalf("warning = %+v", p)
+	}
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(h.store().Path); info.Mode().Perm() != 0o600 {
+			t.Fatalf("mode %v", info.Mode().Perm())
+		}
+	}
+	h.exposed = nil
+	if o := h.run("list-maps"); o.stderr != "" {
+		t.Fatalf("stderr = %s", o.stderr)
 	}
 }

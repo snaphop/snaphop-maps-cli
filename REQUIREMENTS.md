@@ -26,8 +26,11 @@ SnapHop Maps' MCP server. [Traceability](docs/requirements-traceability.md) conn
 
 - **CLI-06:** Resolve credentials from an explicit flag, the environment or the per-service credentials file.
   Bind environment and kept keys to their service addresses, redact keys from diagnostics, require HTTPS except
-  loopback HTTP, and follow no redirects. Caller-supplied `apiKey` in `--args` stays an argument.
-- **CLI-07:** Keep keys privately, atomically and under a bounded lock on supported systems. When saving is enabled, preflight storage before
+  loopback HTTP, dial `localhost` at a loopback address, and follow no redirects. Caller-supplied `apiKey` in
+  `--args` stays an argument. Never read the credentials file as a tool's arguments, and never advise registering
+  again on a 401 the service did not write.
+- **CLI-07:** Keep keys privately, atomically and under a bounded lock on supported systems. Make a file others may
+  read private when it is read, and warn. When saving is enabled, preflight storage before
   issuing a key and keep it before printing it. With `--no-save`, the answer is its only copy. Registration needs `--overwrite` to replace a kept account;
   replacement changes only the key used. Preserve other accounts and unknown fields from newer binaries.
   Platforms and file systems without locking have the limitations [SECURITY.md](SECURITY.md) documents.

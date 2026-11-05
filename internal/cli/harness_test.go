@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -137,6 +138,8 @@ type harness struct {
 	configDir func() (string, error)
 	homeDir   func() (string, error)
 	http      *http.Client
+	// exposed, when set, says which credentials file permissions others may read.
+	exposed func(fs.FileMode) bool
 	// stdout, when set, takes standard output instead of the outcome.
 	stdout io.Writer
 }
@@ -184,6 +187,8 @@ func (h *harness) run(args ...string) outcome {
 		HTTP:      h.http,
 		Now:       func() time.Time { return now },
 		Version:   "1.2.3",
+
+		CredentialsExposed: h.exposed,
 	})
 	return outcome{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
