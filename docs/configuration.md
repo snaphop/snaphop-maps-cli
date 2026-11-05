@@ -14,7 +14,8 @@ The authoritative global flag definitions are in [`internal/cli/commands.go`](..
 An environment key is bound to the environment's service (`SNAPHOP_MAPS_URL`, or the default), not to a service
 selected only by `--url`. A kept key is bound to its stored service address. A replaced environment key uses its
 kept successor with `ENVIRONMENT_KEY_REPLACED`. See [SECURITY.md](../SECURITY.md) before changing these rules.
-HTTPS is required except for loopback HTTP; redirects are refused.
+HTTPS is required except for loopback HTTP, and `localhost` is always dialled at `127.0.0.1` or `::1`; redirects are
+refused.
 
 `--args` accepts an object inline, from `@file`, or from `-` for stdin; explicit flags override its fields.
 JSON input from files and stdin and network responses are bounded at 8 MiB. Relative input, credential, project

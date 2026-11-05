@@ -21,7 +21,8 @@ processes, logs and transcripts may observe its arguments and output.
 - A key the CLI finds, from `--api-key`, `$SNAPHOP_MAPS_API_KEY` or the credentials file, MUST only be sent as an
   `Authorization` bearer header. A key the caller writes into a tool's arguments, as `--args '{"apiKey": ...}'`, is
   sent there, as the tool takes it, and no header goes with it. Either way a key MUST only travel over https, or
-  over http to a loopback address. The CLI MUST NOT follow redirects, which could carry a request to another host.
+  over http to a loopback address, and `localhost` MUST be dialled at a loopback address whatever a resolver says.
+  The CLI MUST NOT follow redirects, which could carry a request to another host.
 - A key kept in the credentials file MUST only be sent to the service address it was kept under. A key from
   `$SNAPHOP_MAPS_API_KEY` MUST only be sent to the service the environment names, `$SNAPHOP_MAPS_URL` or else the
   default, never to one that `--url` alone names (ADR 0004). A JSON flag MUST NOT read the credentials file, by any

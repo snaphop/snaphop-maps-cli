@@ -13,6 +13,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 - A JSON flag such as `--args` or `--markers` refuses the credentials file, by any name, hard link or symbolic link,
   as `@file` or standard input, with `INPUT_REFUSED` (exit status 2) and nothing sent. Read as arguments, it would
   have sent every kept key, for every service, to the service the command names.
+- `--url http://localhost:PORT` is always dialled at `127.0.0.1`, then `::1`, as RFC 6761 has it. It no longer
+  trusts a hosts file or resolver to answer for `localhost`, since a key sent there over plain http is unencrypted.
 
 ## 0.7.0 — 2026-10-29
 

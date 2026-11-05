@@ -115,7 +115,9 @@ type found struct {
 // Run runs one command line and returns its exit status.
 func Run(ctx context.Context, env Env) int {
 	if env.HTTP == nil {
-		env.HTTP = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.DialContext = dialLocalhost(transport.DialContext)
+		env.HTTP = &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	}
 	name, rest, stray := splitCommand(env.Args)
 	if name == "" && stray != "" {
@@ -332,6 +334,28 @@ func (inv *invocation) kept() found {
 		}
 	}
 	return *inv.found
+}
+
+// localhostAddresses are where localhost is, as RFC 6761 has it, whatever a resolver says.
+var localhostAddresses = []string{"127.0.0.1", "::1"}
+
+// dialLocalhost dials localhost at a loopback address, never where a hosts file or a resolver would
+// send it, since plain http to localhost carries the key unencrypted. Other addresses are dialled as
+// given.
+func dialLocalhost(dial func(context.Context, string, string) (net.Conn, error)) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil || !strings.EqualFold(host, "localhost") {
+			return dial(ctx, network, address)
+		}
+		var conn net.Conn
+		for _, ip := range localhostAddresses {
+			if conn, err = dial(ctx, network, net.JoinHostPort(ip, port)); err == nil {
+				break
+			}
+		}
+		return conn, err
+	}
 }
 
 func loopback(host string) bool {

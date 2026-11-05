@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -521,6 +523,58 @@ func TestRedirectsAreNotFollowed(t *testing.T) {
 	h.http = nil
 	h.vars["SNAPHOP_MAPS_API_KEY"] = "k"
 	h.run("list-maps").failure(t, exitTransport, "HTTP_307")
+}
+
+// TestLocalhostIsDialledAtALoopbackAddress: Run's own client reaches a plane on localhost at
+// 127.0.0.1 or ::1, whatever a hosts file or resolver would answer for the name.
+func TestLocalhostIsDialledAtALoopbackAddress(t *testing.T) {
+	t.Parallel()
+	s := newService(t, func(request) answer { return tool(map[string]any{"maps": []any{}}) })
+	h := newHarness(t, s)
+	h.http = nil
+	h.vars["SNAPHOP_MAPS_URL"] = strings.Replace(s.server.URL, "127.0.0.1", "LocalHost", 1)
+	h.vars["SNAPHOP_MAPS_API_KEY"] = "k"
+	h.run("list-maps").success(t)
+	if r := s.only(); r.Auth != "Bearer k" {
+		t.Fatalf("request = %+v", r)
+	}
+}
+
+func TestDialLocalhost(t *testing.T) {
+	t.Parallel()
+	refused := errors.New("connection refused")
+	cases := map[string]struct {
+		address string
+		refuse  map[string]bool
+		dialled []string
+		err     error
+	}{
+		"localhost":          {"localhost:8084", nil, []string{"127.0.0.1:8084"}, nil},
+		"localhost on ::1":   {"LOCALHOST:8084", map[string]bool{"127.0.0.1:8084": true}, []string{"127.0.0.1:8084", "[::1]:8084"}, nil},
+		"localhost nowhere":  {"localhost:8084", map[string]bool{"127.0.0.1:8084": true, "[::1]:8084": true}, []string{"127.0.0.1:8084", "[::1]:8084"}, refused},
+		"another host":       {"maps.snaphop.ai:443", nil, []string{"maps.snaphop.ai:443"}, nil},
+		"a subdomain":        {"localhost.example:80", nil, []string{"localhost.example:80"}, nil},
+		"an address unsplit": {"localhost", nil, []string{"localhost"}, nil},
+	}
+	for name, tc := range cases {
+		var dialled []string
+		dial := dialLocalhost(func(_ context.Context, network, address string) (net.Conn, error) {
+			dialled = append(dialled, address)
+			if tc.refuse[address] {
+				return nil, refused
+			}
+			client, server := net.Pipe()
+			server.Close()
+			return client, nil
+		})
+		conn, err := dial(context.Background(), "tcp", tc.address)
+		if !reflect.DeepEqual(dialled, tc.dialled) || !errors.Is(err, tc.err) || (err == nil) != (conn != nil) {
+			t.Errorf("%s: dialled %v, %v", name, dialled, err)
+		}
+		if conn != nil {
+			conn.Close()
+		}
+	}
 }
 
 func TestRPCCommands(t *testing.T) {

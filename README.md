@@ -174,7 +174,8 @@ until the new key is first used, so an answer lost on the way costs nothing: run
 | `SNAPHOP_MAPS_CREDENTIALS` | `<config dir>/snaphop-maps/credentials.json` |
 
 Plain `http` is refused except to this machine (`localhost` or a loopback address, such as `127.0.0.1` or `::1`), so
-a key is never sent in the clear. The CLI follows no redirects.
+a key is never sent in the clear. `localhost` is always reached at `127.0.0.1` or `::1`, whatever a hosts file or
+resolver says. The CLI follows no redirects.
 
 ## Develop
 
