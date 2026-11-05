@@ -7,6 +7,8 @@ checkout; report the actual run and failures at handoff.
 | --- | --- |
 | `make check` | Formatting, vet, static build, randomized race tests and the 100.0% statement floor on the current platform |
 | `./scripts/ci-local.sh` | The above, all six concurrent cross-builds, skill zip and checksums, pinned govulncheck, security policy tests, full Trivy gate and diff whitespace |
+| Verify check job | `make check` and pinned govulncheck on a Linux amd64 hosted runner |
+| Verify security job | The security policy regression suite and `security/check.py`, with reports and SBOMs kept for 30 days |
 | Verify macOS and Windows jobs | Native tests and the same coverage floor, including each platform's compiled locking implementation |
 | Verify build matrix | Linux, macOS and Windows binaries for amd64 and arm64 compile |
 | `python3 -m unittest discover -s security -p 'test_*.py' -v` | Security policy regression checks |

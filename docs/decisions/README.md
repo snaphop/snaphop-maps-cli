@@ -6,7 +6,7 @@ and [operations](../operations.md), rather than obsolete release procedures.
 
 | Decision | Status |
 | --- | --- |
-| [0001 — Call the MCP server for parity, and speak JSON to agents](0001-call-the-mcp-server-for-parity.md) | Accepted 2026-09-30; release policy amended by 0002 |
+| [0001 — Call the MCP server for parity, and speak JSON to agents](0001-call-the-mcp-server-for-parity.md) | Accepted 2026-09-30; its release policy superseded by 0002, then 0007, then 0008 |
 | [0002 — Release from a tag, with build provenance](0002-release-from-a-tag-with-provenance.md) | Accepted 2026-09-30; amended by 0006; superseded by 0007 |
 | [0003 — Ship an Agent Skill with the CLI](0003-ship-an-agent-skill-with-the-cli.md) | Accepted 2026-09-30 |
 | [0004 — Send a key only to the service it is for](0004-send-a-key-only-to-its-service.md) | Accepted 2026-09-30 |

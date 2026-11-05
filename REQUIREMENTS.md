@@ -15,7 +15,8 @@ SnapHop Maps' MCP server. [Traceability](docs/requirements-traceability.md) conn
 
 - **CLI-03:** Service successes emit one JSON document on stdout. Errors and warnings emit one JSON document per
   line on stderr, with stable codes, actionable hints and the exit statuses documented in [README.md](README.md).
-  An uncertain exchange must not imply that repeating a mutation is safe. Local `skill` output can be Markdown.
+  An uncertain exchange must not imply that repeating a mutation is safe. Local `help` output is text and `skill`
+  output is Markdown.
 - **CLI-04:** JSON arguments accept inline JSON, `@file` and stdin (`-`). Explicit flags override `--args` fields.
   Ambiguous command lines and missing required arguments fail before sending anything. Withdrawal and member
   removal require `--yes`, including through `call`.

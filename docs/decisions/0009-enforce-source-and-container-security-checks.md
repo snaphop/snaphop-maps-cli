@@ -34,3 +34,7 @@ of scanner images, databases and Maven metadata require network access. Containe
 builds add verification time; source scans cover Java dependencies that a native
 executable's OS scan cannot reconstruct. See `security/README.md` for the local
 commands, retained artifacts and exception contract.
+
+Note, 2026-11-05: the scanner is a copy shared with Java services, which is where its Maven and native-executable
+wording comes from. This repository has no Java or Maven project and owns no container: its source scan covers the
+Go module and needs network access only for the scanner image and vulnerability databases.

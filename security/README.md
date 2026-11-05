@@ -22,7 +22,8 @@ exists, never Maven credential settings, and uses Maven Central's alternate
 `repo1.maven.org` endpoint. Native image scanning finds OS packages, but cannot reconstruct
 Java dependencies compiled into native executables, so the source dependency
 scan is required as well. This does not replace the project's existing static
-analysis, tests, or language-specific vulnerability checks.
+analysis, tests, or language-specific vulnerability checks. This CLI has no Maven project: its source scan covers
+`go.mod`, and `govulncheck` remains its Go-specific vulnerability check.
 
 `images.json` enumerates the application-owned Dockerfiles, built from the
 repository root. This CLI currently owns no containers, so its inventory is empty and the gate runs source

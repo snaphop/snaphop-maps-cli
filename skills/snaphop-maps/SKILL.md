@@ -10,7 +10,7 @@ metadata:
 # SnapHop Maps
 
 SnapHop Maps publishes an interactive web map with plain-text markers at a stable link, the **page**, and as HTML to
-embed in any web page. The `snaphop-maps` command drives it. Every command prints one JSON document on stdout. A
+embed in any web page. The `snaphop-maps` command drives it. Every command but `help` and `skill` prints one JSON document on stdout. A
 failure prints `{"error": {"code", "message", "hint", ...}}` on stderr and exits with a nonzero status. Read `hint`: it is
 the next step.
 

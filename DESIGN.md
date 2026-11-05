@@ -14,8 +14,9 @@ separate word. Keep local safety switches out of tool arguments.
 
 ## Output and recovery
 
-Service successes are the service's structured JSON result. `--pretty` changes indentation. Local help, version,
-schema and credential inspection produce JSON; `skill` prints its Markdown, and install and pack return JSON.
+Service successes are the service's structured JSON result. `--pretty` changes indentation. Local `version`,
+`schema` and `credentials` produce JSON. `help` prints text and `skill` prints its Markdown; `skill install` and
+`skill pack` return JSON.
 Errors and warnings remain one JSON document per stderr line even with `--pretty`. Keep the existing exit statuses
 and code meanings stable; add a hint that gives the agent a concrete next action. Report uncertain outcomes
 honestly, including on timeouts and unreadable responses. A saved draft with refused publication remains available
@@ -24,7 +25,7 @@ output failure uses exit status 7 and explains whether the key was kept.
 
 ## Safety and discoverability
 
-Do not echo keys in help errors, warnings or diagnostics. `credentials` describes the source without revealing
+Do not echo keys in help, errors, warnings or diagnostics. `credentials` describes the source without revealing
 the key. Withdrawal and member removal require `--yes`. Registration replacing an account requires `--overwrite`.
 Keep local commands usable offline, even with invalid service configuration.
 
