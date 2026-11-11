@@ -5,6 +5,12 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+### Security
+
+- The command line is built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054) in `net/http`: a header race in
+  `MaxBytesReader` could crash an HTTP/1 server. The command line runs no HTTP server; it moves anyway, so every
+  release is built with a Go that has the fix.
+
 ### Fixed
 
 - A message that a server, or anything answering in its place, gives with an error is cut to 1000 bytes on standard
