@@ -5,6 +5,8 @@ section with a `### Security` subsection is a security release, and its notes sa
 
 ## Unreleased
 
+## 0.7.1 — 2026-11-12
+
 ### Security
 
 - The command line is built with Go 1.27.4, which fixes GO-2026-6859 (CVE-2026-97054) in `net/http`: a header race in
