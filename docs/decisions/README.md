@@ -16,3 +16,4 @@ and [operations](../operations.md), rather than obsolete release procedures.
 | [0008 — Release from snaphop-build-deploy](0008-release-from-snaphop-build-deploy.md) | Accepted 2026-10-01; current release policy |
 | [0009 — Enforce source and container security checks](0009-enforce-source-and-container-security-checks.md) | Accepted 2026-10-06 |
 | [0010 — Adopt repository review skills and documentation](0010-adopt-repository-review-skills-and-documentation.md) | Accepted 2026-10-11 |
+| [0011 — Build every platform in the check job](0011-build-every-platform-in-the-check-job.md) | Accepted 2026-11-23 |
